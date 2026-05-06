@@ -1,0 +1,47 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        working-directory: BrowserIsolator
+        run: swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx26.0
+
+      - name: Package
+        run: |
+          mkdir -p BrowserIsolator.app/Contents/MacOS
+          mkdir -p BrowserIsolator.app/Contents/Resources
+          cp BrowserIsolator/.build/release/BrowserIsolator BrowserIsolator.app/Contents/MacOS/
+          cp Info.plist BrowserIsolator.app/Contents/
+          cp AppIcon.icns BrowserIsolator.app/Contents/Resources/
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "浏览器多开" \
+            --window-pos 200 120 \
+            --window-size 500 320 \
+            --icon-size 80 \
+            --icon "BrowserIsolator.app" 120 160 \
+            --hide-extension "BrowserIsolator.app" \
+            --app-drop-link 380 160 \
+            "BrowserIsolator.dmg" \
+            "BrowserIsolator.app"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: BrowserIsolator.dmg
+          generate_release_notes: true

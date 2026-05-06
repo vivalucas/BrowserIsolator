@@ -1,0 +1,11 @@
+.build/
+*.xcodeproj
+*.xcodeproj/
+BrowserIsolator.app/
+.DS_Store
+AppIcon.png
+AppIcon.iconset/
+generate_icon.swift
+CLAUDE.md
+.claude/
+DEBUG.md
