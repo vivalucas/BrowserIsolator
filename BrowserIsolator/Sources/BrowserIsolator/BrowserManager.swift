@@ -26,6 +26,7 @@ class BrowserManager: ObservableObject {
 
     private let configStore = ConfigStore()
     private var processes: [String: Process] = [:]
+    private var fingerprintInjectors: [String: FingerprintInjector] = [:]
     private var refreshTimer: Timer?
 
     // Chrome 官方下载地址（Universal 版本，支持 Intel 和 Apple Silicon）
@@ -91,12 +92,20 @@ class BrowserManager: ObservableObject {
         process.arguments = [
             "--user-data-dir=\(profileDir)",
             "--no-first-run",
-            "--test-type"
+            "--test-type",
+            "--remote-debugging-port=\(40000 + profile.instanceNumber)"
         ]
         do {
             try process.run()
             processes[profile.folder] = process
             runningProfiles.insert(profile.folder)
+
+            // 启动指纹注入
+            let debugPort = 40000 + profile.instanceNumber
+            let injector = FingerprintInjector(debugPort: debugPort, instanceNumber: profile.instanceNumber)
+            fingerprintInjectors[profile.folder] = injector
+            Task.detached { await injector.startInjection() }
+
             // 启动成功，延迟移除 starting 状态，让用户能看到反馈
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.startingProfiles.remove(profile.folder)
@@ -109,6 +118,9 @@ class BrowserManager: ObservableObject {
 
     func stopProfile(_ profile: Profile) {
         startingProfiles.remove(profile.folder)
+        if let injector = fingerprintInjectors.removeValue(forKey: profile.folder) {
+            Task { await injector.disconnect() }
+        }
         guard let process = processes.removeValue(forKey: profile.folder) else { return }
         if process.isRunning {
             let pid = process.processIdentifier
@@ -119,6 +131,8 @@ class BrowserManager: ObservableObject {
 
     func stopAll() {
         startingProfiles.removeAll()
+        for (_, injector) in fingerprintInjectors { Task { await injector.disconnect() } }
+        fingerprintInjectors.removeAll()
         for (_, process) in processes {
             if process.isRunning {
                 let pid = process.processIdentifier
@@ -131,6 +145,8 @@ class BrowserManager: ObservableObject {
 
     /// 发送 SIGTERM 并等待所有进程真正退出（用于 app 退出时调用）
     func stopAllAndWait() {
+        for (_, injector) in fingerprintInjectors { Task { await injector.disconnect() } }
+        fingerprintInjectors.removeAll()
         let group = DispatchGroup()
         for (_, process) in processes {
             if process.isRunning {
@@ -160,6 +176,27 @@ class BrowserManager: ObservableObject {
         for folder in toRemove {
             processes.removeValue(forKey: folder)
             runningProfiles.remove(folder)
+            if let injector = fingerprintInjectors.removeValue(forKey: folder) {
+                Task { await injector.disconnect() }
+            }
+        }
+
+        // CDP 注入健康检查：若 profile 在运行但注入未就绪，重新尝试
+        Task {
+            for folder in runningProfiles {
+                let injector: FingerprintInjector
+                if let existing = fingerprintInjectors[folder] {
+                    let state = await existing.currentState()
+                    if state == .injected { continue }
+                    injector = existing
+                } else {
+                    guard let profile = config.profiles.first(where: { $0.folder == folder }) else { continue }
+                    let port = 40000 + profile.instanceNumber
+                    injector = FingerprintInjector(debugPort: port, instanceNumber: profile.instanceNumber)
+                    fingerprintInjectors[folder] = injector
+                }
+                await injector.startInjection()
+            }
         }
     }
 
