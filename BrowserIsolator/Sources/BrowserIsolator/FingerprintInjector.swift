@@ -30,6 +30,7 @@ actor FingerprintInjector {
     private let fingerprintScript: String
     private(set) var state: State = .idle
     private var injecting = false
+    private var connection: NWConnection?
 
     init(debugPort: Int, instanceNumber: Int) {
         self.debugPort = debugPort
@@ -43,8 +44,9 @@ actor FingerprintInjector {
     private static func generateScript(instanceNumber: Int) -> String {
         let cores = [4, 6, 8, 10]
         let memory = [4, 8, 16]
-        let core = cores[(instanceNumber - 1) % cores.count]
-        let mem = memory[(instanceNumber - 1) % memory.count]
+        let num = max(instanceNumber, 1)
+        let core = cores[(num - 1) % cores.count]
+        let mem = memory[(num - 1) % memory.count]
         return """
         Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => \(core), configurable: true});
         Object.defineProperty(navigator, 'deviceMemory', {get: () => \(mem), configurable: true});
@@ -60,6 +62,8 @@ actor FingerprintInjector {
         guard !injecting, state != .injected else { return }
         injecting = true
         state = .waiting
+        connection?.cancel()
+        connection = nil
 
         do {
             let wsURL = try await pollCDPReady()
@@ -77,6 +81,8 @@ actor FingerprintInjector {
     func disconnect() {
         state = .idle
         injecting = false
+        connection?.cancel()
+        connection = nil
     }
 
     // MARK: - HTTP 轮询
@@ -131,6 +137,7 @@ actor FingerprintInjector {
                 port: NWEndpoint.Port(rawValue: port)!,
                 using: .tcp
             )
+            self.connection = conn
             let flag = ResumptionFlag()
 
             conn.stateUpdateHandler = { [weak self] state in
@@ -184,12 +191,15 @@ actor FingerprintInjector {
         // 4. 读取 CDP 确认响应（不解析，只要确认有响应）
         _ = try? await read(conn: conn, minLength: 2, maxLength: 4096)
 
-        // 5. 连接保持不断开，Chrome 重启时 stateUpdateHandler 的 .failed 会触发
+        // 5. 连接保持不断开，Chrome 重启或连接断开时触发重连
         conn.stateUpdateHandler = { [weak self] state in
-            if case .failed = state {
+            switch state {
+            case .failed, .cancelled:
                 Task { [weak self] in
                     await self?.handleDisconnect()
                 }
+            default:
+                break
             }
         }
     }
@@ -197,6 +207,7 @@ actor FingerprintInjector {
     private func handleDisconnect() {
         state = .idle
         injecting = false
+        connection = nil
         print("[Fingerprint] 连接断开 port=\(debugPort)")
     }
 
@@ -236,47 +247,6 @@ actor FingerprintInjector {
         }
 
         return frame
-    }
-
-    /// 解析一个 WebSocket 帧
-    private func parseFrame(_ data: Data) -> (opcode: UInt8, payload: Data)? {
-        guard data.count >= 2 else { return nil }
-
-        let opcode = data[0] & 0x0F
-        let masked = (data[1] & 0x80) != 0
-        var payloadLen = Int(data[1] & 0x7F)
-        var offset = 2
-
-        if payloadLen == 126 {
-            guard data.count >= 4 else { return nil }
-            payloadLen = Int(data[2]) << 8 | Int(data[3])
-            offset = 4
-        } else if payloadLen == 127 {
-            guard data.count >= 10 else { return nil }
-            payloadLen = 0
-            for i in 2..<10 {
-                payloadLen = (payloadLen << 8) | Int(data[i])
-            }
-            offset = 10
-        }
-
-        var maskKey: [UInt8] = []
-        if masked {
-            guard data.count >= offset + 4 else { return nil }
-            maskKey = Array(data[offset..<offset + 4])
-            offset += 4
-        }
-
-        guard data.count >= offset + payloadLen else { return nil }
-        var payload = Data(data[offset..<offset + payloadLen])
-
-        if masked {
-            for i in 0..<payload.count {
-                payload[i] ^= maskKey[i % 4]
-            }
-        }
-
-        return (opcode, payload)
     }
 
     // MARK: - TCP I/O
