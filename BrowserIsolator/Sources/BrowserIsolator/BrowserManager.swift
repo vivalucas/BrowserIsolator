@@ -27,6 +27,7 @@ class BrowserManager: ObservableObject {
     private let configStore = ConfigStore()
     private var processes: [String: Process] = [:]
     private var fingerprintInjectors: [String: FingerprintInjector] = [:]
+    private var debugPorts: [String: Int] = [:]
     private var refreshTimer: Timer?
 
     // Chrome 官方下载地址（Universal 版本，支持 Intel 和 Apple Silicon）
@@ -87,21 +88,23 @@ class BrowserManager: ObservableObject {
 
         startingProfiles.insert(profile.folder)
 
+        let debugPort = findAvailablePort(preferred: 40000 + profile.instanceNumber)
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: chromiumExePath)
         process.arguments = [
             "--user-data-dir=\(profileDir)",
             "--no-first-run",
             "--test-type",
-            "--remote-debugging-port=\(40000 + profile.instanceNumber)"
+            "--remote-debugging-port=\(debugPort)"
         ]
         do {
             try process.run()
             processes[profile.folder] = process
+            debugPorts[profile.folder] = debugPort
             runningProfiles.insert(profile.folder)
 
             // 启动指纹注入
-            let debugPort = 40000 + profile.instanceNumber
             let injector = FingerprintInjector(debugPort: debugPort, instanceNumber: profile.instanceNumber)
             fingerprintInjectors[profile.folder] = injector
             Task.detached { await injector.startInjection() }
@@ -112,8 +115,36 @@ class BrowserManager: ObservableObject {
             }
         } catch {
             startingProfiles.remove(profile.folder)
+            debugPorts.removeValue(forKey: profile.folder)
             print("[BrowserIsolator] 启动环境 \(profile.folder) 失败: \(error)")
         }
+    }
+
+    /// 从首选端口开始查找可用端口，最多尝试 10 个
+    private nonisolated func findAvailablePort(preferred: Int) -> Int {
+        for offset in 0..<10 {
+            let port = preferred + offset
+            if isPortAvailable(port) { return port }
+        }
+        return preferred // 回退到首选端口，让 Chrome 自行处理冲突
+    }
+
+    private nonisolated func isPortAvailable(_ port: Int) -> Bool {
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = UInt16(port).bigEndian
+        addr.sin_addr.s_addr = UInt32(0x7F000001).bigEndian // 127.0.0.1
+
+        let sock = socket(AF_INET, SOCK_STREAM, 0)
+        guard sock >= 0 else { return true }
+        defer { close(sock) }
+
+        let result = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { addrPtr in
+                Darwin.bind(sock, addrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        return result == 0
     }
 
     func stopProfile(_ profile: Profile) {
@@ -121,22 +152,26 @@ class BrowserManager: ObservableObject {
         if let injector = fingerprintInjectors.removeValue(forKey: profile.folder) {
             Task { await injector.disconnect() }
         }
+        debugPorts.removeValue(forKey: profile.folder)
         guard let process = processes.removeValue(forKey: profile.folder) else { return }
         if process.isRunning {
             let pid = process.processIdentifier
-            kill(-pid, SIGTERM)
+            kill(pid, SIGTERM)
         }
         runningProfiles.remove(profile.folder)
     }
 
     func stopAll() {
         startingProfiles.removeAll()
+        refreshTimer?.invalidate()
+        refreshTimer = nil
         for (_, injector) in fingerprintInjectors { Task { await injector.disconnect() } }
         fingerprintInjectors.removeAll()
+        debugPorts.removeAll()
         for (_, process) in processes {
             if process.isRunning {
                 let pid = process.processIdentifier
-                kill(-pid, SIGTERM)
+                kill(pid, SIGTERM)
             }
         }
         processes.removeAll()
@@ -145,21 +180,34 @@ class BrowserManager: ObservableObject {
 
     /// 发送 SIGTERM 并等待所有进程真正退出（用于 app 退出时调用）
     func stopAllAndWait() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
         for (_, injector) in fingerprintInjectors { Task { await injector.disconnect() } }
         fingerprintInjectors.removeAll()
-        let group = DispatchGroup()
+        debugPorts.removeAll()
+        var running: [(Process, pid_t)] = []
         for (_, process) in processes {
             if process.isRunning {
-                let pid = process.processIdentifier
-                kill(-pid, SIGTERM)
-                group.enter()
-                DispatchQueue.global().async {
-                    process.waitUntilExit()
-                    group.leave()
-                }
+                running.append((process, process.processIdentifier))
             }
         }
-        _ = group.wait(timeout: .now() + 5)
+        for (_, pid) in running {
+            kill(pid, SIGTERM)
+        }
+        let group = DispatchGroup()
+        for (process, _) in running {
+            group.enter()
+            DispatchQueue.global().async {
+                process.waitUntilExit()
+                group.leave()
+            }
+        }
+        if group.wait(timeout: .now() + 5) == .timedOut {
+            // 超时未退出的进程强制杀死
+            for (process, pid) in running where process.isRunning {
+                kill(pid, SIGKILL)
+            }
+        }
         processes.removeAll()
         runningProfiles.removeAll()
     }
@@ -176,6 +224,7 @@ class BrowserManager: ObservableObject {
         for folder in toRemove {
             processes.removeValue(forKey: folder)
             runningProfiles.remove(folder)
+            debugPorts.removeValue(forKey: folder)
             if let injector = fingerprintInjectors.removeValue(forKey: folder) {
                 Task { await injector.disconnect() }
             }
@@ -191,7 +240,7 @@ class BrowserManager: ObservableObject {
                     injector = existing
                 } else {
                     guard let profile = config.profiles.first(where: { $0.folder == folder }) else { continue }
-                    let port = 40000 + profile.instanceNumber
+                    let port = debugPorts[folder] ?? (40000 + profile.instanceNumber)
                     injector = FingerprintInjector(debugPort: port, instanceNumber: profile.instanceNumber)
                     fingerprintInjectors[folder] = injector
                 }

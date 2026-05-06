@@ -81,9 +81,11 @@ actor FingerprintInjector {
 
     // MARK: - HTTP 轮询
 
-    /// 轮询 CDP HTTP 端点，等待 Chrome 就绪
+    /// 轮询 CDP HTTP 端点，等待 Chrome 就绪（指数退避）
     private func pollCDPReady() async throws -> String {
         let url = URL(string: "http://127.0.0.1:\(debugPort)/json")!
+        var delay: UInt64 = 200_000_000 // 200ms
+        let maxDelay: UInt64 = 2_000_000_000 // 2s
         for attempt in 1...15 {
             do {
                 let (data, response) = try await URLSession.shared.data(from: url)
@@ -95,7 +97,8 @@ actor FingerprintInjector {
                 // Chrome 还没就绪，继续等待
             }
             if attempt < 15 {
-                try await Task.sleep(nanoseconds: 500_000_000) // 500ms
+                try await Task.sleep(nanoseconds: delay)
+                delay = min(delay * 2, maxDelay)
             }
         }
         throw InjectorError.cdpNotReady
@@ -145,6 +148,8 @@ actor FingerprintInjector {
                     }
                 case .failed(let error):
                     _ = flag.tryResume { continuation.resume(throwing: error) }
+                case .cancelled:
+                    _ = flag.tryResume { continuation.resume(throwing: InjectorError.connectionClosed) }
                 default:
                     break
                 }
@@ -164,7 +169,8 @@ actor FingerprintInjector {
         // 2. 接收握手响应
         let responseData = try await read(conn: conn, minLength: 12, maxLength: 4096)
         guard let response = String(data: responseData, encoding: .utf8),
-              response.contains("101") else {
+              response.hasPrefix("HTTP/1.1 101"),
+              response.lowercased().contains("upgrade: websocket") else {
             throw InjectorError.handshakeFailed
         }
 
@@ -307,11 +313,32 @@ actor FingerprintInjector {
     }
 
     private func escapeJSON(_ string: String) -> String {
-        string
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
+        var result = ""
+        result.reserveCapacity(string.count)
+        for char in string {
+            switch char {
+            case "\\": result.append("\\\\")
+            case "\"": result.append("\\\"")
+            case "\n": result.append("\\n")
+            case "\r": result.append("\\r")
+            case "\t": result.append("\\t")
+            case "\u{08}": result.append("\\b")
+            case "\u{0C}": result.append("\\f")
+            default:
+                if char.unicodeScalars.contains(where: { $0.value < 0x20 }) {
+                    for scalar in char.unicodeScalars {
+                        if scalar.value < 0x20 {
+                            result.append("\\u\(String(format: "%04x", scalar.value))")
+                        } else {
+                            result.append(String(scalar))
+                        }
+                    }
+                } else {
+                    result.append(char)
+                }
+            }
+        }
+        return result
     }
 
     // MARK: - 错误定义
