@@ -19,10 +19,10 @@ BrowserIsolator의 목표는 명확합니다. 로컬 브라우저 환경을 안�
 
 ## 요구 사항
 
-- macOS 26 Tahoe 이상
+- macOS 13 Ventura 이상
 - Apple Silicon Mac (M1 이상)
 
-현재 릴리스는 `arm64-apple-macosx26.0`용이며 Intel Mac은 지원하지 않습니다.
+현재 릴리스는 `arm64-apple-macosx13.0`용이며 Intel Mac은 지원하지 않습니다.
 
 ## 설치
 
@@ -42,7 +42,7 @@ BrowserIsolator의 목표는 명확합니다. 로컬 브라우저 환경을 안�
 
 ```bash
 cd BrowserIsolator
-swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx26.0
+swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx13.0
 ```
 
 더블 클릭 가능한 `.app` 생성:

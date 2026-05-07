@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 echo "Building BrowserIsolator..."
 cd BrowserIsolator
-swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx26.0
+swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx13.0
 cd ..
 
 echo "Packaging..."

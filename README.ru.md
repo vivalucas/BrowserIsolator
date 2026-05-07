@@ -19,10 +19,10 @@
 
 ## Требования
 
-- macOS 26 Tahoe или новее
+- macOS 13 Ventura или новее
 - Apple Silicon Mac (M1 или новее)
 
-Текущая сборка предназначена для `arm64-apple-macosx26.0` и не поддерживает Intel Mac.
+Текущая сборка предназначена для `arm64-apple-macosx13.0` и не поддерживает Intel Mac.
 
 ## Установка
 
@@ -42,7 +42,7 @@
 
 ```bash
 cd BrowserIsolator
-swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx26.0
+swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx13.0
 ```
 
 Сборка `.app`:

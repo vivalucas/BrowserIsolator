@@ -19,10 +19,10 @@ BrowserIsolator の目的はシンプルです。ローカルのブラウザ環�
 
 ## 動作環境
 
-- macOS 26 Tahoe 以降
+- macOS 13 Ventura 以降
 - Apple Silicon Mac（M1 以降）
 
-現在のリリースは `arm64-apple-macosx26.0` 向けで、Intel Mac には対応していません。
+現在のリリースは `arm64-apple-macosx13.0` 向けで、Intel Mac には対応していません。
 
 ## インストール
 
@@ -42,7 +42,7 @@ BrowserIsolator の目的はシンプルです。ローカルのブラウザ環�
 
 ```bash
 cd BrowserIsolator
-swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx26.0
+swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx13.0
 ```
 
 `.app` を作る場合：

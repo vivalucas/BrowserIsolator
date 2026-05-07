@@ -18,10 +18,10 @@ BrowserIsolator 的目标很简单：做好本地浏览器环境隔离。它不�
 
 ## 系统要求
 
-- macOS 26 Tahoe 或更高版本
+- macOS 13 Ventura 或更高版本
 - Apple Silicon Mac（M1 及以上）
 
-当前发布包按 `arm64-apple-macosx26.0` 构建，不支持 Intel Mac。
+当前发布包按 `arm64-apple-macosx13.0` 构建，不支持 Intel Mac。
 
 ## 安装
 
@@ -43,7 +43,7 @@ BrowserIsolator 的目标很简单：做好本地浏览器环境隔离。它不�
 
 ```bash
 cd BrowserIsolator
-swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx26.0
+swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx13.0
 ```
 
 产物位于：

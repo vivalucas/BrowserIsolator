@@ -19,10 +19,10 @@ BrowserIsolator verfolgt ein klares Ziel: lokale Browser-Umgebungen zuverlässig
 
 ## Anforderungen
 
-- macOS 26 Tahoe oder neuer
+- macOS 13 Ventura oder neuer
 - Apple Silicon Mac (M1 oder neuer)
 
-Die aktuelle Version ist für `arm64-apple-macosx26.0` gebaut und unterstützt keine Intel Macs.
+Die aktuelle Version ist für `arm64-apple-macosx13.0` gebaut und unterstützt keine Intel Macs.
 
 ## Installation
 
@@ -42,7 +42,7 @@ Nur ausführbare Datei:
 
 ```bash
 cd BrowserIsolator
-swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx26.0
+swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx13.0
 ```
 
 Als `.app` paketieren:

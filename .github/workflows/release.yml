@@ -16,7 +16,7 @@ jobs:
 
       - name: Build
         working-directory: BrowserIsolator
-        run: swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx26.0
+        run: swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx13.0
 
       - name: Package
         run: |
