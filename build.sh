@@ -13,5 +13,6 @@ mkdir -p BrowserIsolator.app/Contents/Resources
 cp BrowserIsolator/.build/release/BrowserIsolator BrowserIsolator.app/Contents/MacOS/
 cp Info.plist BrowserIsolator.app/Contents/
 cp AppIcon.icns BrowserIsolator.app/Contents/Resources/
+cp -R BrowserIsolator/Resources/*.lproj BrowserIsolator.app/Contents/Resources/
 
 echo "Done. Run: open BrowserIsolator.app"

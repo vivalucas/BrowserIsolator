@@ -4,17 +4,18 @@ import SwiftUI
 struct BrowserIsolatorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var manager = BrowserManager()
+    @StateObject private var localization = Localization()
 
     var body: some Scene {
         WindowGroup {
-            MainView(manager: manager)
-                .frame(minWidth: 380, idealWidth: 420, minHeight: 320)
+            MainView(manager: manager, l10n: localization)
+                .frame(minWidth: 420, idealWidth: 460, minHeight: 340)
         }
         .windowResizability(.contentSize)
-        .defaultSize(width: 420, height: 440)
+        .defaultSize(width: 460, height: 460)
 
         MenuBarExtra("", systemImage: "macwindow.on.rectangle") {
-            MenuBarView(manager: manager)
+            MenuBarView(manager: manager, l10n: localization)
         }
         .menuBarExtraStyle(.menu)
     }
@@ -32,6 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct MainView: View {
     @ObservedObject var manager: BrowserManager
+    @ObservedObject var l10n: Localization
     @State private var showRenameSheet: Bool = false
     @State private var renameTarget: Profile?
     @State private var renameText: String = ""
@@ -46,7 +48,7 @@ struct MainView: View {
 
     var body: some View {
         if !manager.chromiumReady {
-            DownloadView(manager: manager)
+            DownloadView(manager: manager, l10n: l10n)
         } else {
             profileList
         }
@@ -61,10 +63,10 @@ struct MainView: View {
                     Image(systemName: "macwindow.on.rectangle")
                         .font(.system(size: 48))
                         .foregroundStyle(.tertiary)
-                    Text("还没有环境")
+                    Text(l10n.t("empty.title"))
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Text("点击工具栏 + 添加一个")
+                    Text(l10n.t("empty.subtitle"))
                         .font(.system(size: 14))
                         .foregroundStyle(.tertiary)
                     Spacer()
@@ -77,8 +79,10 @@ struct MainView: View {
                         profile: profile,
                         isRunning: manager.runningProfiles.contains(profile.folder),
                         isStarting: manager.startingProfiles.contains(profile.folder),
+                        debugPort: manager.debugPort(for: profile),
                         diskSize: manager.profileSizes[profile.folder],
                         lastUsed: manager.profileLastUsed[profile.folder],
+                        l10n: l10n,
                         onToggle: {
                             if manager.runningProfiles.contains(profile.folder) {
                                 manager.stopProfile(profile)
@@ -88,45 +92,53 @@ struct MainView: View {
                         }
                     )
                     .contextMenu {
-                        Button("重命名") {
+                        Button(l10n.t("context.rename")) {
                             renameTarget = profile
                             renameText = profile.displayName
                             showRenameSheet = true
                         }
                         if !manager.runningProfiles.contains(profile.folder) {
                             Divider()
-                            Button("删除", role: .destructive) {
+                            Button(l10n.t("context.delete"), role: .destructive) {
                                 showDeleteConfirm = profile
                             }
                         }
                     }
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 5, leading: 12, bottom: 5, trailing: 12))
                 }
             }
         }
-        .listStyle(.plain)
-        .navigationTitle("浏览器多开")
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .navigationTitle(l10n.t("app.name"))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     manager.addProfile()
                 } label: {
-                    Label("添加环境", systemImage: "plus")
+                    Label(l10n.t("toolbar.add"), systemImage: "plus")
                         .labelStyle(.titleAndIcon)
                 }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                LanguageMenu(l10n: l10n)
             }
 
             ToolbarItem(placement: .primaryAction) {
                 Button(role: .destructive) {
                     manager.stopAll()
                 } label: {
-                    Label("全部关闭", systemImage: "stop.fill")
+                    Label(l10n.t("toolbar.stop_all"), systemImage: "stop.fill")
                         .labelStyle(.titleAndIcon)
                 }
                 .disabled(manager.runningProfiles.isEmpty)
             }
         }
         .sheet(isPresented: $showRenameSheet) {
-            RenameSheet(name: $renameText) {
+            RenameSheet(name: $renameText, l10n: l10n) {
                 if let target = renameTarget {
                     manager.updateDisplayName(for: target, newName: renameText)
                 }
@@ -137,21 +149,29 @@ struct MainView: View {
                 showRenameSheet = false
             }
         }
-        .alert("确认删除", isPresented: Binding(
+        .alert(l10n.t("delete.title"), isPresented: Binding(
             get: { showDeleteConfirm != nil },
             set: { if !$0 { showDeleteConfirm = nil } }
         )) {
-            Button("取消", role: .cancel) { showDeleteConfirm = nil }
-            Button("删除", role: .destructive) {
+            Button(l10n.t("common.cancel"), role: .cancel) { showDeleteConfirm = nil }
+            Button(l10n.t("common.delete"), role: .destructive) {
                 if let p = showDeleteConfirm { manager.deleteProfile(p) }
                 showDeleteConfirm = nil
             }
         } message: {
             if let p = showDeleteConfirm {
-                Text("将删除「\(p.displayText)」的所有数据")
+                Text(l10n.format("delete.message", profileTitle(p, l10n: l10n)))
             }
         }
     }
+}
+
+@MainActor
+private func profileTitle(_ profile: Profile, l10n: Localization) -> String {
+    if profile.displayName.isEmpty {
+        return l10n.format("profile.default_name", profile.instanceNumber)
+    }
+    return l10n.format("profile.display_name", profile.instanceNumber, profile.displayName)
 }
 
 // MARK: - Profile 行
@@ -160,8 +180,10 @@ struct ProfileRow: View {
     let profile: Profile
     let isRunning: Bool
     let isStarting: Bool
+    let debugPort: Int?
     let diskSize: Int64?
     let lastUsed: Date?
+    @ObservedObject var l10n: Localization
     let onToggle: () -> Void
 
     private static let sizeFormatter: ByteCountFormatter = {
@@ -179,42 +201,71 @@ struct ProfileRow: View {
     private var lastUsedText: String? {
         guard let date = lastUsed else { return nil }
         let cal = Calendar.current
-        if cal.isDateInToday(date) { return "今天" }
-        if cal.isDateInYesterday(date) { return "昨天" }
+        if cal.isDateInToday(date) { return l10n.t("date.today") }
+        if cal.isDateInYesterday(date) { return l10n.t("date.yesterday") }
         let days = cal.dateComponents([.day], from: date, to: Date()).day ?? 0
-        if days < 7 { return "\(days)天前" }
+        if days < 7 { return l10n.format("date.days_ago", days) }
         if cal.component(.year, from: date) == cal.component(.year, from: Date()) {
-            return "\(cal.component(.month, from: date))月\(cal.component(.day, from: date))日"
+            return l10n.format("date.month_day", cal.component(.month, from: date), cal.component(.day, from: date))
         }
         let df = DateFormatter()
+        df.locale = l10n.locale
         df.dateFormat = "yyyy-MM-dd"
         return df.string(from: date)
     }
 
+    private var statusText: String {
+        if isStarting { return l10n.t("status.starting") }
+        if isRunning { return l10n.t("status.running") }
+        return l10n.t("status.stopped")
+    }
+
+    private var statusColor: Color {
+        if isStarting { return .orange }
+        if isRunning { return .green }
+        return .secondary
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(isRunning ? Color.green : Color.secondary.opacity(0.3))
-                .frame(width: 12, height: 12)
+        HStack(spacing: 14) {
+            VStack(spacing: 0) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 9, height: 9)
+                Rectangle()
+                    .fill(statusColor.opacity(isRunning || isStarting ? 0.26 : 0.12))
+                    .frame(width: 1)
+                    .frame(maxHeight: .infinity)
+            }
+            .frame(width: 12)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(profile.displayText)
-                    .font(.system(size: 15, weight: isRunning ? .semibold : .regular))
-                    .foregroundStyle(isRunning ? .primary : .secondary)
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    Text(profileTitle(profile, l10n: l10n))
+                        .font(.system(size: 15, weight: isRunning ? .semibold : .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
 
-                HStack(spacing: 6) {
+                    Text(statusText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(statusColor)
+                }
+
+                FlowMetaRow {
+                    MetaItem(systemImage: "folder", text: profile.folder)
+
+                    if let debugPort {
+                        MetaItem(systemImage: "network", text: l10n.format("meta.port", debugPort))
+                    }
+
                     if let s = sizeText {
-                        Text(s)
+                        MetaItem(systemImage: "internaldrive", text: s)
                     }
-                    if sizeText != nil, lastUsedText != nil {
-                        Text("·")
-                    }
+
                     if let t = lastUsedText {
-                        Text("最后使用 \(t)")
+                        MetaItem(systemImage: "clock", text: t)
                     }
                 }
-                .font(.system(size: 12))
-                .foregroundStyle(.tertiary)
             }
 
             Spacer(minLength: 16)
@@ -225,24 +276,84 @@ struct ProfileRow: View {
                     .frame(width: 20, height: 20)
             } else if isRunning {
                 Button(role: .destructive, action: onToggle) {
-                    Label("关闭", systemImage: "stop.fill")
+                    Label(l10n.t("common.close"), systemImage: "stop.fill")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
             } else {
                 Button(action: onToggle) {
-                    Label("启动", systemImage: "play.fill")
+                    Label(l10n.t("common.start"), systemImage: "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isRunning ? Color.green.opacity(0.06) : Color.clear)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(isRunning ? Color.green.opacity(0.22) : Color.secondary.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+struct FlowMetaRow<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            content
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+}
+
+struct MetaItem: View {
+    let systemImage: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.tertiary)
+            Text(text)
+                .monospacedDigit()
+        }
+    }
+}
+
+struct LanguageMenu: View {
+    @ObservedObject var l10n: Localization
+
+    var body: some View {
+        Menu {
+            ForEach(AppLanguage.allCases) { language in
+                Button {
+                    l10n.language = language
+                } label: {
+                    if language == l10n.language {
+                        Label(language.nativeName, systemImage: "checkmark")
+                    } else {
+                        Text(language.nativeName)
+                    }
+                }
+            }
+        } label: {
+            Label(l10n.t("language"), systemImage: "globe")
+                .labelStyle(.titleAndIcon)
+        }
     }
 }
 
@@ -250,28 +361,29 @@ struct ProfileRow: View {
 
 struct RenameSheet: View {
     @Binding var name: String
+    @ObservedObject var l10n: Localization
     @FocusState private var isFocused: Bool
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("重命名").font(.headline)
+            Text(l10n.t("rename.title")).font(.headline)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("自定义名称，方便识别")
+                Text(l10n.t("rename.hint"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("为此环境命名", text: $name)
+                TextField(l10n.t("rename.placeholder"), text: $name)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
                     .focused($isFocused)
             }
 
             HStack(spacing: 12) {
-                Button("取消", action: onCancel)
+                Button(l10n.t("common.cancel"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("确定", action: onConfirm)
+                Button(l10n.t("common.confirm"), action: onConfirm)
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             }
@@ -286,6 +398,7 @@ struct RenameSheet: View {
 
 struct MenuBarView: View {
     @ObservedObject var manager: BrowserManager
+    @ObservedObject var l10n: Localization
 
     var body: some View {
         Group {
@@ -293,29 +406,31 @@ struct MenuBarView: View {
                 ForEach(manager.config.profiles.filter { manager.runningProfiles.contains($0.folder) }) { profile in
                     HStack {
                         Circle().fill(.green).frame(width: 6, height: 6)
-                        Text(profile.displayText)
+                        Text(profileTitle(profile, l10n: l10n))
                         Spacer()
-                        Button("关闭") { manager.stopProfile(profile) }
+                        Button(l10n.t("common.close")) { manager.stopProfile(profile) }
                     }
                 }
-                Button("全部关闭") { manager.stopAll() }
+                Button(l10n.t("toolbar.stop_all")) { manager.stopAll() }
                 Divider()
             }
 
             ForEach(manager.config.profiles.filter { !manager.runningProfiles.contains($0.folder) }) { profile in
-                Button(profile.displayText) { manager.startProfile(profile) }
+                Button(profileTitle(profile, l10n: l10n)) { manager.startProfile(profile) }
             }
 
             Divider()
-            Button("打开管理面板") {
+            Button(l10n.t("menu.open_panel")) {
                 NSApp.activate(ignoringOtherApps: true)
                 if let main = NSApp.windows.first(where: { !($0 is NSPanel) }) {
                     main.makeKeyAndOrderFront(nil)
                 }
             }
             Divider()
-            Button("检查更新") { manager.checkForUpdates() }
-            Button("退出") {
+            LanguageMenu(l10n: l10n)
+            Divider()
+            Button(l10n.t("menu.check_updates")) { manager.checkForUpdates() }
+            Button(l10n.t("menu.quit")) {
                 if manager.runningProfiles.isEmpty {
                     NSApp.terminate(nil)
                 } else {
@@ -328,32 +443,32 @@ struct MenuBarView: View {
             switch alert {
             case .upToDate:
                 return Alert(
-                    title: Text("检查更新"),
-                    message: Text("当前已是最新版本"),
-                    dismissButton: .default(Text("确定"))
+                    title: Text(l10n.t("update.title")),
+                    message: Text(l10n.t("update.up_to_date")),
+                    dismissButton: .default(Text(l10n.t("common.confirm")))
                 )
             case .updateAvailable(let latest):
                 return Alert(
-                    title: Text("发现新版本"),
-                    message: Text("最新版本: \(latest)\n当前版本: \(manager.currentVersion)"),
-                    primaryButton: .default(Text("前往下载"), action: { manager.openReleasesPage() }),
-                    secondaryButton: .cancel(Text("稍后"))
+                    title: Text(l10n.t("update.available_title")),
+                    message: Text(l10n.format("update.available_message", latest, manager.currentVersion)),
+                    primaryButton: .default(Text(l10n.t("update.download")), action: { manager.openReleasesPage() }),
+                    secondaryButton: .cancel(Text(l10n.t("common.later")))
                 )
             case .checkFailed:
                 return Alert(
-                    title: Text("检查更新"),
-                    message: Text("无法连接服务器，请检查网络后重试"),
-                    dismissButton: .default(Text("确定"))
+                    title: Text(l10n.t("update.title")),
+                    message: Text(l10n.t("update.failed")),
+                    dismissButton: .default(Text(l10n.t("common.confirm")))
                 )
             }
         }
-        .alert("确认退出", isPresented: $manager.showQuitConfirm) {
-            Button("取消", role: .cancel) {}
-            Button("关闭并退出", role: .destructive) {
+        .alert(l10n.t("quit.title"), isPresented: $manager.showQuitConfirm) {
+            Button(l10n.t("common.cancel"), role: .cancel) {}
+            Button(l10n.t("quit.confirm"), role: .destructive) {
                 NSApp.terminate(nil)
             }
         } message: {
-            Text("还有 \(manager.runningProfiles.count) 个环境正在运行，退出将自动关闭所有环境。")
+            Text(l10n.format("quit.message", manager.runningProfiles.count))
         }
     }
 }
@@ -362,6 +477,7 @@ struct MenuBarView: View {
 
 struct DownloadView: View {
     @ObservedObject var manager: BrowserManager
+    @ObservedObject var l10n: Localization
 
     var body: some View {
         VStack(spacing: 20) {
@@ -371,18 +487,18 @@ struct DownloadView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
 
-            Text("首次使用，正在下载浏览器")
+            Text(l10n.t("download.title"))
                 .font(.system(size: 16, weight: .semibold))
 
             switch manager.downloadState {
             case .fetchingInfo:
-                Text("准备中…")
+                Text(l10n.t("download.preparing"))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
 
             case .downloading(let progress):
                 ProgressView(value: progress) {
-                    Text("下载中…（约 237MB）")
+                    Text(l10n.t("download.progress"))
                         .font(.system(size: 13))
                 } currentValueLabel: {
                     Text("\(Int(progress * 100))%")
@@ -395,13 +511,13 @@ struct DownloadView: View {
             case .extracting:
                 ProgressView()
                     .controlSize(.small)
-                Text("正在安装…")
+                Text(l10n.t("download.installing"))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
 
             case .failed(let message):
                 VStack(spacing: 10) {
-                    Text("下载失败")
+                    Text(l10n.t("download.failed"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.red)
                     Text(message)
@@ -414,21 +530,21 @@ struct DownloadView: View {
                         .frame(width: 200)
 
                     VStack(spacing: 6) {
-                        Text("你也可以手动安装浏览器：")
+                        Text(l10n.t("download.manual_title"))
                             .font(.system(size: 11, weight: .medium))
-                        Text("1. 下载 Chrome：https://www.google.com/chrome/\n2. 双击 dmg，将「Google Chrome.app」\n   拖入下方目标文件夹")
+                        Text(l10n.t("download.manual_steps"))
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: 280)
-                        Button("打开目标文件夹") {
+                        Button(l10n.t("download.open_folder")) {
                             NSWorkspace.shared.open(AppPaths.chromiumDir)
                         }
                         .controlSize(.small)
                     }
 
                     HStack(spacing: 8) {
-                        Button("重试下载") {
+                        Button(l10n.t("download.retry")) {
                             manager.downloadChromium()
                         }
                         .buttonStyle(.borderedProminent)

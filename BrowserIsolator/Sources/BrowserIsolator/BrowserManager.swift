@@ -64,6 +64,10 @@ class BrowserManager: ObservableObject {
             .path
     }
 
+    func debugPort(for profile: Profile) -> Int? {
+        debugPorts[profile.folder]
+    }
+
     init() {
         AppPaths.ensureDirectories()
         self.config = configStore.load()
@@ -99,10 +103,12 @@ class BrowserManager: ObservableObject {
             "--remote-debugging-port=\(debugPort)"
         ]
         do {
+            startAutoRefresh()
             try process.run()
             processes[profile.folder] = process
             debugPorts[profile.folder] = debugPort
             runningProfiles.insert(profile.folder)
+            profileLastUsed[profile.folder] = Date()
 
             // 启动指纹注入
             let injector = FingerprintInjector(debugPort: debugPort, instanceNumber: profile.instanceNumber)
@@ -159,15 +165,16 @@ class BrowserManager: ObservableObject {
             kill(pid, SIGTERM)
         }
         runningProfiles.remove(profile.folder)
+        profileLastUsed[profile.folder] = Date()
+        scanProfileInfo()
     }
 
     func stopAll() {
         startingProfiles.removeAll()
-        refreshTimer?.invalidate()
-        refreshTimer = nil
         for (_, injector) in fingerprintInjectors { Task { await injector.disconnect() } }
         fingerprintInjectors.removeAll()
         debugPorts.removeAll()
+        let stoppedFolders = Array(runningProfiles)
         for (_, process) in processes {
             if process.isRunning {
                 let pid = process.processIdentifier
@@ -176,6 +183,11 @@ class BrowserManager: ObservableObject {
         }
         processes.removeAll()
         runningProfiles.removeAll()
+        let now = Date()
+        for folder in stoppedFolders {
+            profileLastUsed[folder] = now
+        }
+        scanProfileInfo()
     }
 
     /// 发送 SIGTERM 并等待所有进程真正退出（用于 app 退出时调用）
@@ -229,14 +241,15 @@ class BrowserManager: ObservableObject {
                 Task { await injector.disconnect() }
             }
         }
+        if !toRemove.isEmpty {
+            scanProfileInfo()
+        }
 
         // CDP 注入健康检查：若 profile 在运行但注入未就绪，重新尝试
         Task {
             for folder in runningProfiles {
                 let injector: FingerprintInjector
                 if let existing = fingerprintInjectors[folder] {
-                    let state = await existing.currentState()
-                    if state == .injected { continue }
                     injector = existing
                 } else {
                     guard let profile = config.profiles.first(where: { $0.folder == folder }) else { continue }
@@ -250,6 +263,7 @@ class BrowserManager: ObservableObject {
     }
 
     private func startAutoRefresh() {
+        guard refreshTimer == nil else { return }
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshRunningStatus()
@@ -268,6 +282,7 @@ class BrowserManager: ObservableObject {
         let dir = AppPaths.profilesDir.appendingPathComponent(folder)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         configStore.save(config)
+        scanProfileInfo()
     }
 
     func deleteProfile(_ profile: Profile) {
@@ -275,7 +290,10 @@ class BrowserManager: ObservableObject {
         let dir = AppPaths.profilesDir.appendingPathComponent(profile.folder)
         try? FileManager.default.removeItem(at: dir)
         config.profiles.removeAll { $0.folder == profile.folder }
+        profileSizes.removeValue(forKey: profile.folder)
+        profileLastUsed.removeValue(forKey: profile.folder)
         configStore.save(config)
+        scanProfileInfo()
     }
 
     func updateDisplayName(for profile: Profile, newName: String) {
@@ -332,14 +350,12 @@ class BrowserManager: ObservableObject {
                 print("[BrowserIsolator] 下载 Chrome from \(chromeDownloadURL)")
                 let tempDMG = FileManager.default.temporaryDirectory
                     .appendingPathComponent("chrome-\(UUID().uuidString).dmg")
+                defer { try? FileManager.default.removeItem(at: tempDMG) }
                 try await downloadFile(from: chromeDownloadURL, to: tempDMG)
 
                 // 2. 挂载 dmg 并直接安装
                 downloadState = .extracting
                 try await mountAndInstallChrome(from: tempDMG)
-
-                // 3. 清理
-                try? FileManager.default.removeItem(at: tempDMG)
 
                 chromiumReady = true
                 downloadState = .idle
@@ -484,8 +500,16 @@ class BrowserManager: ObservableObject {
             }
 
             await MainActor.run { [weak self] in
-                self?.profileSizes = sizes
-                self?.profileLastUsed = lastUsed
+                guard let self else { return }
+                for (folder, date) in self.profileLastUsed {
+                    if let scanned = lastUsed[folder] {
+                        lastUsed[folder] = max(scanned, date)
+                    } else {
+                        lastUsed[folder] = date
+                    }
+                }
+                self.profileSizes = sizes
+                self.profileLastUsed = lastUsed
             }
         }
     }

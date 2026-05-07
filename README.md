@@ -1,124 +1,169 @@
 # 浏览器多开 (BrowserIsolator)
 
-在一台 Mac 上同时运行多个独立浏览器，每个环境独立保存密码、Cookie 和登录状态，互不干扰。
+在一台 Mac 上同时运行多个彼此独立的 Chrome 环境。每个环境都有自己的 Cookie、LocalStorage、密码和登录状态，适合同时管理多个账号，而不用反复登录、退出、切换浏览器配置。
 
----
+[English](README.en.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Deutsch](README.de.md) | [Français](README.fr.md) | [Русский](README.ru.md)
 
-经常需要在同一台电脑上同时登录多个账号，来回切换非常麻烦。试过一些多开工具，要么太复杂、带一堆用不上的指纹伪装功能，要么不稳定容易出问题。
-
-其实需求很简单：一台电脑上同时开几个浏览器，浏览器各登各的号，互不影响。不需要防封号、不需要设备码模拟，就是纯粹的登录状态隔离。
-
-浏览器多开就是这么来的。一个轻量工具，帮你同时运行多个独立浏览器，每个环境的数据完全隔离。
-
----
+BrowserIsolator 的目标很简单：做好本地浏览器环境隔离。它不是复杂的反检测平台，也不承诺绕过网站风控；它只是把多个浏览器环境清楚地分开，让日常多账号使用更稳定、更省心。
 
 ## 功能
 
-- **多环境隔离**：每个浏览器环境独立保存 Cookie、LocalStorage 和登录状态，互不干扰
-- **指纹差异化**：每个环境自动设置不同的浏览器指纹（CPU 核心数、内存等），降低被网站关联的风险
-- **状态一目了然**：运行中的环境自动排在前面，绿色圆点标识运行状态
-- **快速操作**：一键启动/关闭环境，支持全部关闭
-- **自定义命名**：右键菜单重命名，方便区分不同账号
-- **菜单栏快捷操作**：通过菜单栏图标快速启动/关闭环境，无需打开管理面板
-- **完全本地**：所有数据保存在本地，无数据收集
+- **独立环境**：每个环境使用单独的 Chrome 数据目录，登录状态、Cookie、缓存和扩展配置互不影响
+- **一键启动/关闭**：在主面板或菜单栏快速启动、关闭单个环境，也可以一次关闭全部环境
+- **环境信息展示**：面板显示运行状态、环境目录、调试端口、磁盘占用和最后使用时间
+- **自定义命名**：通过右键菜单给环境命名，方便对应不同账号或用途
+- **指纹差异化**：为不同环境注入不同的 `navigator.hardwareConcurrency` 和 `navigator.deviceMemory` 值
+- **自动浏览器安装**：首次运行时自动下载官方 Google Chrome，并放在应用自己的数据目录中
+- **本地优先**：配置、浏览器和环境数据都保存在本机，不上传、不收集用户数据
 
 ## 系统要求
 
 - macOS 26 Tahoe 或更高版本
-- Apple Silicon 芯片（M1 及以上），不支持 Intel Mac
+- Apple Silicon Mac（M1 及以上）
+
+当前发布包按 `arm64-apple-macosx26.0` 构建，不支持 Intel Mac。
 
 ## 安装
 
-**方式一：DMG 安装包**
+### 方式一：下载 DMG
 
-1. 进入本仓库的 [Releases](../../releases) 页面，下载最新的 `BrowserIsolator.dmg`
-2. 打开 DMG，将浏览器多开拖入 Applications 文件夹
-3. 首次启动时，macOS 可能提示"应用已损坏"或"无法验证开发者"——这是 Gatekeeper 对未付费签名应用的正常拦截，应用本身完好。在终端执行以下命令移除隔离标记：
+1. 打开本仓库的 [Releases](../../releases) 页面，下载最新的 `BrowserIsolator.dmg`
+2. 打开 DMG，将 `BrowserIsolator.app` 拖入 Applications 文件夹
+3. 首次启动时，如果 macOS 提示“无法验证开发者”或“应用已损坏”，这是未公证应用常见的 Gatekeeper 拦截。可以执行：
+
    ```bash
    xattr -cr /Applications/BrowserIsolator.app
    ```
-   之后双击即可正常启动；或右键点击 → 打开 → 弹窗中再点"打开"。
 
-**方式二：自行编译**
+   然后重新打开应用。也可以在 Finder 中右键应用，选择“打开”，再在弹窗中确认。
 
-1. 克隆本仓库
-2. 在项目目录下执行：
-   ```bash
-   cd BrowserIsolator
-   swift build -c release
-   ```
-3. 编译产物在 `.build/release/BrowserIsolator`
+### 方式二：自行编译
+
+如果只需要生成可执行文件：
+
+```bash
+cd BrowserIsolator
+swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx26.0
+```
+
+产物位于：
+
+```bash
+BrowserIsolator/.build/release/BrowserIsolator
+```
+
+如果需要生成可双击打开的 `.app`：
+
+```bash
+./build.sh
+```
+
+产物位于仓库根目录的 `BrowserIsolator.app`。
 
 ## 浏览器引擎
 
-浏览器多开需要一个浏览器引擎来运行环境。首次启动时，应用会**自动下载** Google Chrome 到以下位置：
+BrowserIsolator 使用独立的官方 Google Chrome 副本，不读取系统里已有的 Chrome 配置，也不影响你的日常 Chrome。
 
-```
+首次启动时，应用会自动下载 Chrome 到：
+
+```text
 ~/Library/Application Support/BrowserIsolator/Chromium/Google Chrome.app/
 ```
 
-下载过程大约需要几分钟，取决于网络速度（约 237MB）。下载完成后会自动进入管理界面。
+下载文件约 237 MB，耗时取决于网络情况。下载并安装完成后，应用会自动进入环境管理面板。
 
-### macOS 可能阻止安装
+### macOS 可能阻止自动安装
 
-首次下载浏览器时，macOS 可能弹出"隐私与安全性"提示，显示"已阻止浏览器多开修改 Mac 上的 App"。这是因为浏览器多开需要将 Chrome 安装到应用目录，macOS 把此行为识别为应用管理操作。
+首次下载浏览器时，macOS 可能弹出“隐私与安全性”提示，显示应用被阻止修改 Mac 上的 App。这通常是因为应用要把 Chrome 复制到自己的应用支持目录。
 
-**解决方法**：打开 **系统设置 → 隐私与安全性 → 应用程序管理**，将浏览器多开设为允许即可。之后重新打开浏览器多开会自动继续下载。
+解决方法：
 
-### 如果自动下载失败
+1. 打开 **系统设置 → 隐私与安全性 → 应用程序管理**
+2. 允许“浏览器多开”管理应用
+3. 重新打开 BrowserIsolator，它会继续下载和安装流程
 
-你可以手动下载浏览器并放到指定位置：
+### 手动安装 Chrome
 
-1. 访问 [Chrome 官网](https://www.google.com/chrome/) 下载，或直接下载 [dmg 安装包](https://dl.google.com/chrome/mac/universal/stable/GGRO/googlechrome.dmg)
-2. 双击 dmg 挂载，复制里面的 `Google Chrome.app`
-3. 将 `Google Chrome.app` 放到以下目录：
-   ```
+如果自动下载失败，可以手动放置浏览器：
+
+1. 下载 [Google Chrome](https://www.google.com/chrome/) 或直接下载 [Chrome DMG](https://dl.google.com/chrome/mac/universal/stable/GGRO/googlechrome.dmg)
+2. 打开 DMG，复制其中的 `Google Chrome.app`
+3. 放到：
+
+   ```text
    ~/Library/Application Support/BrowserIsolator/Chromium/
    ```
-   确保最终路径为 `~/Library/Application Support/BrowserIsolator/Chromium/Google Chrome.app`。如果 `Chromium/` 目录不存在，先手动创建。
 
-之后重新打开浏览器多开即可正常使用。
+最终路径应为：
+
+```text
+~/Library/Application Support/BrowserIsolator/Chromium/Google Chrome.app
+```
+
+之后重新打开 BrowserIsolator 即可。
 
 ## 使用
 
-- **启动环境**：点击环境右侧的"启动"按钮
-- **关闭环境**：点击运行中环境右侧的"关闭"按钮，或使用工具栏"全部关闭"
-- **重命名**：右键菜单 → 重命名
-- **添加环境**：点击工具栏的"添加环境"按钮
-- **删除环境**：右键菜单 → 删除（仅未运行时显示）
-- **菜单栏**：点击菜单栏图标，可快速启动/关闭环境
+- **启动环境**：点击环境右侧的“启动”
+- **关闭环境**：点击运行中环境右侧的“关闭”
+- **全部关闭**：点击工具栏的“全部关闭”
+- **添加环境**：点击工具栏的“添加环境”
+- **重命名**：右键环境，选择“重命名”
+- **删除环境**：右键未运行的环境，选择“删除”
+- **菜单栏操作**：点击菜单栏图标，可快速启动、关闭环境，或打开管理面板
 
-## 常见问题
+运行中的环境会排在列表前面。每个运行环境会显示当前使用的远程调试端口，主要用于诊断指纹注入和浏览器连接状态。
 
-**为什么不用现有的 Chrome？**
+## 数据位置
 
-浏览器多开使用独立的 Chrome 副本，放在 `~/Library/Application Support/BrowserIsolator/Chromium/` 下，数据目录也在同一位置。它和你系统里安装的 Google Chrome 完全隔离——不读取你的 Chrome 配置，不影响你的日常使用，互不干扰。
+所有数据都保存在：
 
-**视频能正常播放吗？**
-
-可以。下载的是官方 Google Chrome，支持所有主流视频网站和编解码器。
-
-**浏览器版本会自动更新吗？**
-
-不会。当前下载的版本会一直使用。如果你需要更新，可以手动删除 `~/Library/Application Support/BrowserIsolator/Chromium/`，下次启动浏览器多开时会自动下载最新版本。
-
-**数据保存在哪里？**
-
-所有数据保存在 `~/Library/Application Support/BrowserIsolator/` 下：
-
-```
+```text
 ~/Library/Application Support/BrowserIsolator/
-├── config.json          # 配置文件
-├── Chromium/            # 浏览器引擎
+├── config.json          # 环境列表和自定义名称
+├── Chromium/            # 独立 Chrome 副本
 │   └── Google Chrome.app/
-└── Profiles/            # 各环境的数据
+└── Profiles/            # 各环境数据
     ├── p1/
     ├── p2/
     └── p3/
 ```
 
-卸载应用后，手动删除整个 `BrowserIsolator` 目录即可完全清理。
+卸载应用后，如果想完全清理数据，手动删除整个 `BrowserIsolator` 目录即可。
 
-**支持同时运行多少个环境？**
+## 常见问题
 
-没有限制，但建议同时不超过 5 个，具体取决于你的电脑配置。
+### 为什么不用系统里已有的 Chrome？
+
+为了避免污染你的日常浏览器。BrowserIsolator 使用自己的 Chrome 副本和自己的 profile 目录，不读取系统 Chrome 的书签、Cookie、密码或扩展配置。
+
+### 它能防封号吗？
+
+不能保证。BrowserIsolator 的核心能力是本地数据隔离，并做了少量基础指纹差异化。不同网站的风控规则差异很大，本项目不承诺绕过检测或规避平台限制。
+
+### 指纹差异化具体做了什么？
+
+应用通过 Chrome DevTools Protocol 给页面注入脚本，为不同环境设置不同的 CPU 核心数和内存值：
+
+- `navigator.hardwareConcurrency`
+- `navigator.deviceMemory`
+
+这些值会根据环境编号稳定生成，同一个环境重启后保持一致。它是轻量差异化，不是完整设备模拟。
+
+### 视频网站能正常播放吗？
+
+可以。应用下载的是官方 Google Chrome，支持主流视频网站和常见编解码能力。
+
+### 浏览器会自动更新吗？
+
+不会。当前下载的 Chrome 会一直使用。如果需要更新，可以删除：
+
+```text
+~/Library/Application Support/BrowserIsolator/Chromium/
+```
+
+下次启动 BrowserIsolator 时会重新下载最新的 Chrome。
+
+### 支持同时运行多少个环境？
+
+没有硬性限制。建议同时运行不超过 5 个环境，具体取决于内存、CPU 和每个环境打开的网页数量。
