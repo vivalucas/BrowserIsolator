@@ -65,7 +65,11 @@ class ConfigStore {
 
     func save(_ config: AppConfig) {
         AppPaths.ensureDirectories()
-        guard let data = try? JSONEncoder().encode(config) else { return }
-        try? data.write(to: configURL, options: .atomic)
+        do {
+            let data = try JSONEncoder().encode(config)
+            try data.write(to: configURL, options: .atomic)
+        } catch {
+            print("[BrowserIsolator] 配置文件保存失败: \(error)")
+        }
     }
 }

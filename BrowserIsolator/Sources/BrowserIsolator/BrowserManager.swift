@@ -12,6 +12,19 @@ enum DownloadState: Equatable {
     case failed(String)
 }
 
+// MARK: - 浏览器错误
+
+enum BrowserError: LocalizedError {
+    case noAvailablePort(preferred: Int, range: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .noAvailablePort(let preferred, let range):
+            return "无法找到可用端口（尝试范围：\(preferred)-\(preferred + range - 1)）"
+        }
+    }
+}
+
 // MARK: - BrowserManager
 
 @MainActor
@@ -92,17 +105,17 @@ class BrowserManager: ObservableObject {
 
         startingProfiles.insert(profile.folder)
 
-        let debugPort = findAvailablePort(preferred: 40000 + profile.instanceNumber)
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: chromiumExePath)
-        process.arguments = [
-            "--user-data-dir=\(profileDir)",
-            "--no-first-run",
-            "--test-type",
-            "--remote-debugging-port=\(debugPort)"
-        ]
         do {
+            let debugPort = try findAvailablePort(preferred: 40000 + profile.instanceNumber)
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: chromiumExePath)
+            process.arguments = [
+                "--user-data-dir=\(profileDir)",
+                "--no-first-run",
+                "--test-type",
+                "--remote-debugging-port=\(debugPort)"
+            ]
             startAutoRefresh()
             try process.run()
             processes[profile.folder] = process
@@ -116,8 +129,9 @@ class BrowserManager: ObservableObject {
             Task.detached { await injector.startInjection() }
 
             // 启动成功，延迟移除 starting 状态，让用户能看到反馈
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.startingProfiles.remove(profile.folder)
+            Task {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                startingProfiles.remove(profile.folder)
             }
         } catch {
             startingProfiles.remove(profile.folder)
@@ -127,12 +141,12 @@ class BrowserManager: ObservableObject {
     }
 
     /// 从首选端口开始查找可用端口，最多尝试 10 个
-    private nonisolated func findAvailablePort(preferred: Int) -> Int {
+    private nonisolated func findAvailablePort(preferred: Int) throws -> Int {
         for offset in 0..<10 {
             let port = preferred + offset
             if isPortAvailable(port) { return port }
         }
-        return preferred // 回退到首选端口，让 Chrome 自行处理冲突
+        throw BrowserError.noAvailablePort(preferred: preferred, range: 10)
     }
 
     private nonisolated func isPortAvailable(_ port: Int) -> Bool {
@@ -310,7 +324,13 @@ class BrowserManager: ObservableObject {
                 guard let url = URL(string: latestReleaseAPI) else { throw URLError(.badURL) }
                 var request = URLRequest(url: url)
                 request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-                let (data, _) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw URLError(.badServerResponse)
+                }
+                guard httpResponse.statusCode == 200 else {
+                    throw URLError(.init(rawValue: httpResponse.statusCode))
+                }
                 let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                 guard let latestTag = json?["tag_name"] as? String else {
                     throw URLError(.cannotParseResponse)
