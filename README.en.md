@@ -9,11 +9,12 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 ## Features
 
 - **Isolated environments**: each environment uses its own Chrome data directory, keeping login state, cookies, cache, and extension settings separate
-- **One-click control**: start or close environments from the main panel or menu bar, including closing all environments at once
-- **Environment details**: view status, profile folder, debugging port, disk usage, and last-used time
-- **Custom names**: rename environments from the context menu
-- **Fingerprint variation**: injects different `navigator.hardwareConcurrency` and `navigator.deviceMemory` values per environment
+- **One-click control**: start or close environments from the main panel or menu bar, including closing all environments at once; closing waits for Chrome to exit so profile locks are released cleanly
+- **Environment details**: the main list focuses on name, status, disk usage, and last-used time; profile paths, debugging ports, and advanced details live in the right-side inspector
+- **Custom names**: name a new environment immediately after creating it, or rename it later from the context menu
+- **Fingerprint variation**: injects different `navigator.hardwareConcurrency` and `navigator.deviceMemory` values per environment, including newly opened tabs
 - **Automatic browser setup**: downloads official Google Chrome on first launch into the app's own data directory
+- **Settings panel**: view Chrome status, data folders, language, and advanced-detail display options
 - **Local-first**: configuration, browser files, and profile data stay on your Mac
 - **7 languages**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
@@ -71,7 +72,7 @@ On first launch, Chrome is downloaded to:
 ~/Library/Application Support/BrowserIsolator/Chromium/Google Chrome.app/
 ```
 
-The download is about 237 MB. After it finishes, the app opens the environment management panel.
+The download is about 237 MB. BrowserIsolator checks the download response and Chrome executable before opening the environment management panel.
 
 ### macOS may block automatic installation
 
@@ -105,12 +106,14 @@ Then reopen BrowserIsolator.
 
 ## Usage
 
-- **Start**: click Start on an environment row
-- **Close**: click Close on a running environment
-- **Close all**: use Close All in the toolbar
+- **Start**: click Start on an environment row; if Chrome is unavailable, the port is busy, or the profile is locked, the error appears inline on that row
+- **Close**: click Close on a running environment; the row briefly shows Closing until Chrome exits
+- **Close all**: use Close All in the toolbar; the app waits for all environments to exit
 - **Add**: click Add Environment in the toolbar
 - **Rename**: right-click an environment and choose Rename
-- **Delete**: right-click a stopped environment and choose Delete
+- **Details**: select an environment and use the right-side inspector to view the profile path, debugging port, errors, actions, and advanced details
+- **Delete**: right-click a stopped environment and choose Delete; type the environment name to confirm, then its data is moved to Trash
+- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, or change language
 - **Language**: use the globe menu in the toolbar or the menu bar menu
 - **Menu bar**: start, close, change language, check updates, or open the main panel
 
@@ -150,7 +153,7 @@ BrowserIsolator uses Chrome DevTools Protocol to inject scripts that set:
 - `navigator.hardwareConcurrency`
 - `navigator.deviceMemory`
 
-Values are generated from the environment number and remain stable across restarts. This is lightweight variation, not full device simulation.
+Values are generated from the environment number and remain stable across restarts. BrowserIsolator periodically synchronizes current Chrome DevTools Protocol page targets, so newly opened tabs are injected too. This is lightweight variation, not full device simulation.
 
 ### Does video playback work?
 

@@ -9,6 +9,7 @@ enum DownloadState: Equatable {
     case fetchingInfo
     case downloading(progress: Double)
     case extracting
+    case verifying
     case failed(String)
 }
 
@@ -16,11 +17,17 @@ enum DownloadState: Equatable {
 
 enum BrowserError: LocalizedError {
     case noAvailablePort(preferred: Int, range: Int)
+    case chromiumNotReady(String)
+    case downloadFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .noAvailablePort(let preferred, let range):
             return "无法找到可用端口（尝试范围：\(preferred)-\(preferred + range - 1)）"
+        case .chromiumNotReady(let reason):
+            return "浏览器不可用：\(reason)"
+        case .downloadFailed(let reason):
+            return "下载浏览器失败：\(reason)"
         }
     }
 }
@@ -34,6 +41,7 @@ class BrowserManager: ObservableObject {
     @Published var config: AppConfig
     @Published var runningProfiles: Set<String> = []
     @Published var startingProfiles: Set<String> = []
+    @Published var stoppingProfiles: Set<String> = []
     @Published var chromiumReady: Bool = false
     @Published var downloadState: DownloadState = .idle
 
@@ -52,6 +60,7 @@ class BrowserManager: ObservableObject {
 
     @Published var profileSizes: [String: Int64] = [:]
     @Published var profileLastUsed: [String: Date] = [:]
+    @Published var profileErrors: [String: String] = [:]
 
     @Published var updateAlert: UpdateAlert?
     @Published var showQuitConfirm: Bool = false
@@ -81,15 +90,29 @@ class BrowserManager: ObservableObject {
         debugPorts[profile.folder]
     }
 
+    var chromeVersionText: String? {
+        let infoPlist = AppPaths.chromiumDir
+            .appendingPathComponent("Google Chrome.app")
+            .appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: infoPlist),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
+            return nil
+        }
+        return plist["CFBundleShortVersionString"] as? String
+    }
+
+    var existingChromiumAvailable: Bool {
+        isChromiumExecutableReady()
+    }
+
     init() {
         AppPaths.ensureDirectories()
         self.config = configStore.load()
         BrowserManager.shared = self
         ensureProfileDirs()
         refreshRunningStatus()
-        startAutoRefresh()
 
-        chromiumReady = FileManager.default.fileExists(atPath: chromiumExePath)
+        chromiumReady = isChromiumExecutableReady()
         if !chromiumReady {
             downloadChromium()
         }
@@ -100,12 +123,16 @@ class BrowserManager: ObservableObject {
     // MARK: - 启动 / 关闭
 
     func startProfile(_ profile: Profile) {
-        guard chromiumReady, !runningProfiles.contains(profile.folder) else { return }
+        guard chromiumReady,
+              !runningProfiles.contains(profile.folder),
+              !stoppingProfiles.contains(profile.folder) else { return }
         let profileDir = AppPaths.profilesDir.appendingPathComponent(profile.folder).path
 
         startingProfiles.insert(profile.folder)
 
         do {
+            profileErrors.removeValue(forKey: profile.folder)
+            try validateChromiumExecutable()
             let debugPort = try findAvailablePort(preferred: 40000 + profile.instanceNumber)
 
             let process = Process()
@@ -116,11 +143,11 @@ class BrowserManager: ObservableObject {
                 "--test-type",
                 "--remote-debugging-port=\(debugPort)"
             ]
-            startAutoRefresh()
             try process.run()
             processes[profile.folder] = process
             debugPorts[profile.folder] = debugPort
             runningProfiles.insert(profile.folder)
+            startAutoRefresh()
             profileLastUsed[profile.folder] = Date()
 
             // 启动指纹注入
@@ -136,6 +163,7 @@ class BrowserManager: ObservableObject {
         } catch {
             startingProfiles.remove(profile.folder)
             debugPorts.removeValue(forKey: profile.folder)
+            profileErrors[profile.folder] = error.localizedDescription
             print("[BrowserIsolator] 启动环境 \(profile.folder) 失败: \(error)")
         }
     }
@@ -173,14 +201,20 @@ class BrowserManager: ObservableObject {
             Task { await injector.disconnect() }
         }
         debugPorts.removeValue(forKey: profile.folder)
-        guard let process = processes.removeValue(forKey: profile.folder) else { return }
-        if process.isRunning {
-            let pid = process.processIdentifier
-            kill(pid, SIGTERM)
+        guard let process = processes[profile.folder] else { return }
+        stoppingProfiles.insert(profile.folder)
+        if !process.isRunning {
+            finishStoppedProfile(profile.folder)
+            return
         }
-        runningProfiles.remove(profile.folder)
-        profileLastUsed[profile.folder] = Date()
-        scanProfileInfo()
+        let pid = process.processIdentifier
+        kill(pid, SIGTERM)
+        Task.detached { [weak self] in
+            await Self.waitForProcessExit(process, pid: pid, timeout: 5)
+            await MainActor.run {
+                self?.finishStoppedProfile(profile.folder)
+            }
+        }
     }
 
     func stopAll() {
@@ -189,19 +223,41 @@ class BrowserManager: ObservableObject {
         fingerprintInjectors.removeAll()
         debugPorts.removeAll()
         let stoppedFolders = Array(runningProfiles)
-        for (_, process) in processes {
-            if process.isRunning {
-                let pid = process.processIdentifier
-                kill(pid, SIGTERM)
+        let processesToStop = processes
+        stoppingProfiles.formUnion(stoppedFolders)
+        for (_, process) in processesToStop where process.isRunning {
+            kill(process.processIdentifier, SIGTERM)
+        }
+        Task.detached { [weak self] in
+            for (_, process) in processesToStop where process.isRunning {
+                await Self.waitForProcessExit(process, pid: process.processIdentifier, timeout: 5)
+            }
+            await MainActor.run {
+                let now = Date()
+                for folder in stoppedFolders {
+                    self?.profileLastUsed[folder] = now
+                }
+                self?.processes.removeAll()
+                self?.runningProfiles.removeAll()
+                self?.stoppingProfiles.removeAll()
+                self?.scanProfileInfo()
+                self?.stopAutoRefreshIfIdle()
             }
         }
-        processes.removeAll()
-        runningProfiles.removeAll()
-        let now = Date()
-        for folder in stoppedFolders {
-            profileLastUsed[folder] = now
+    }
+
+    func stopAllThenQuit() {
+        stopAll()
+        Task {
+            for _ in 0..<60 {
+                if runningProfiles.isEmpty && stoppingProfiles.isEmpty {
+                    NSApp.terminate(nil)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+            NSApp.terminate(nil)
         }
-        scanProfileInfo()
     }
 
     /// 发送 SIGTERM 并等待所有进程真正退出（用于 app 退出时调用）
@@ -236,6 +292,7 @@ class BrowserManager: ObservableObject {
         }
         processes.removeAll()
         runningProfiles.removeAll()
+        stoppingProfiles.removeAll()
     }
 
     // MARK: - 状态检测
@@ -259,7 +316,13 @@ class BrowserManager: ObservableObject {
             scanProfileInfo()
         }
 
-        // CDP 注入健康检查：若 profile 在运行但注入未就绪，重新尝试
+        guard !runningProfiles.isEmpty else {
+            refreshTimer?.invalidate()
+            refreshTimer = nil
+            return
+        }
+
+        // CDP 注入同步：周期性扫描新的 page target，已注入过的 target 会在 actor 内跳过。
         Task {
             for folder in runningProfiles {
                 let injector: FingerprintInjector
@@ -277,7 +340,7 @@ class BrowserManager: ObservableObject {
     }
 
     private func startAutoRefresh() {
-        guard refreshTimer == nil else { return }
+        guard refreshTimer == nil, !runningProfiles.isEmpty else { return }
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshRunningStatus()
@@ -285,9 +348,25 @@ class BrowserManager: ObservableObject {
         }
     }
 
+    private func stopAutoRefreshIfIdle() {
+        guard runningProfiles.isEmpty else { return }
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
+    private func finishStoppedProfile(_ folder: String) {
+        processes.removeValue(forKey: folder)
+        runningProfiles.remove(folder)
+        stoppingProfiles.remove(folder)
+        profileLastUsed[folder] = Date()
+        scanProfileInfo()
+        stopAutoRefreshIfIdle()
+    }
+
     // MARK: - Profile 管理
 
-    func addProfile() {
+    @discardableResult
+    func addProfile() -> Profile {
         let num = config.profiles.compactMap { Int($0.folder.dropFirst()) }
             .sorted().last ?? 0
         let folder = "p\(num + 1)"
@@ -297,23 +376,43 @@ class BrowserManager: ObservableObject {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         configStore.save(config)
         scanProfileInfo()
+        return profile
     }
 
     func deleteProfile(_ profile: Profile) {
-        guard !runningProfiles.contains(profile.folder) else { return }
+        moveProfileToTrash(profile)
+    }
+
+    func moveProfileToTrash(_ profile: Profile) {
+        guard !runningProfiles.contains(profile.folder),
+              !stoppingProfiles.contains(profile.folder) else { return }
         let dir = AppPaths.profilesDir.appendingPathComponent(profile.folder)
-        try? FileManager.default.removeItem(at: dir)
+        do {
+            if FileManager.default.fileExists(atPath: dir.path) {
+                var trashedURL: NSURL?
+                try FileManager.default.trashItem(at: dir, resultingItemURL: &trashedURL)
+            }
+        } catch {
+            profileErrors[profile.folder] = error.localizedDescription
+            print("[BrowserIsolator] 删除环境 \(profile.folder) 失败: \(error)")
+            return
+        }
         config.profiles.removeAll { $0.folder == profile.folder }
         profileSizes.removeValue(forKey: profile.folder)
         profileLastUsed.removeValue(forKey: profile.folder)
+        profileErrors.removeValue(forKey: profile.folder)
         configStore.save(config)
         scanProfileInfo()
     }
 
     func updateDisplayName(for profile: Profile, newName: String) {
         guard let idx = config.profiles.firstIndex(where: { $0.folder == profile.folder }) else { return }
-        config.profiles[idx].displayName = newName
+        config.profiles[idx].displayName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         configStore.save(config)
+    }
+
+    func clearProfileError(_ profile: Profile) {
+        profileErrors.removeValue(forKey: profile.folder)
     }
 
     // MARK: - 检查更新
@@ -360,6 +459,7 @@ class BrowserManager: ObservableObject {
         // 防止并发下载
         if case .downloading = downloadState { return }
         if case .extracting = downloadState { return }
+        if case .verifying = downloadState { return }
         if case .fetchingInfo = downloadState { return }
 
         downloadState = .fetchingInfo
@@ -377,6 +477,8 @@ class BrowserManager: ObservableObject {
                 downloadState = .extracting
                 try await mountAndInstallChrome(from: tempDMG)
 
+                downloadState = .verifying
+                try validateChromiumExecutable()
                 chromiumReady = true
                 downloadState = .idle
                 print("[BrowserIsolator] Chrome 安装完成: \(chromiumExePath)")
@@ -385,6 +487,40 @@ class BrowserManager: ObservableObject {
                 downloadState = .failed(error.localizedDescription)
             }
         }
+    }
+
+    func reinstallChromium() {
+        guard runningProfiles.isEmpty, stoppingProfiles.isEmpty else { return }
+        do {
+            try FileManager.default.createDirectory(at: AppPaths.chromiumDir, withIntermediateDirectories: true)
+            chromiumReady = false
+            downloadChromium()
+        } catch {
+            downloadState = .failed(error.localizedDescription)
+        }
+    }
+
+    func useExistingChromiumIfAvailable() {
+        guard isChromiumExecutableReady() else { return }
+        chromiumReady = true
+        downloadState = .idle
+    }
+
+    func openSupportFolder() {
+        NSWorkspace.shared.open(AppPaths.supportDir)
+    }
+
+    func openProfilesFolder() {
+        NSWorkspace.shared.open(AppPaths.profilesDir)
+    }
+
+    func openChromiumFolder() {
+        NSWorkspace.shared.open(AppPaths.chromiumDir)
+    }
+
+    func copySupportPath() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(AppPaths.supportDir.path, forType: .string)
     }
 
     // MARK: - 下载私有方法
@@ -400,6 +536,17 @@ class BrowserManager: ObservableObject {
                 }
                 guard let tempURL else {
                     continuation.resume(throwing: URLError(.cannotCreateFile))
+                    return
+                }
+                if let http = response as? HTTPURLResponse,
+                   !(200...299).contains(http.statusCode) {
+                    continuation.resume(throwing: BrowserError.downloadFailed("HTTP \(http.statusCode)"))
+                    return
+                }
+                if let mimeType = response?.mimeType,
+                   !mimeType.localizedCaseInsensitiveContains("diskimage"),
+                   !mimeType.localizedCaseInsensitiveContains("octet-stream") {
+                    continuation.resume(throwing: BrowserError.downloadFailed("返回内容不是 DMG（\(mimeType)）"))
                     return
                 }
                 do {
@@ -477,6 +624,7 @@ class BrowserManager: ObservableObject {
         do {
             try fm.createDirectory(at: targetDir, withIntermediateDirectories: true)
             try fm.copyItem(at: sourceApp, to: targetApp)
+            try validateChromiumExecutable()
             // 安装成功，删除备份
             try? fm.removeItem(at: backupDir)
         } catch {
@@ -486,6 +634,40 @@ class BrowserManager: ObservableObject {
                 try fm.moveItem(at: backupDir, to: targetDir)
             }
             throw error
+        }
+    }
+
+    private func isChromiumExecutableReady() -> Bool {
+        (try? validateChromiumExecutable()) != nil
+    }
+
+    private func validateChromiumExecutable() throws {
+        let path = chromiumExePath
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: path) else {
+            throw BrowserError.chromiumNotReady("找不到 Google Chrome 可执行文件")
+        }
+        guard fm.isExecutableFile(atPath: path) else {
+            throw BrowserError.chromiumNotReady("Google Chrome 可执行文件没有执行权限")
+        }
+    }
+
+    private nonisolated static func waitForProcessExit(_ process: Process, pid: pid_t, timeout: TimeInterval) async {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                process.waitUntilExit()
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                return false
+            }
+
+            let exited = await group.next() ?? false
+            group.cancelAll()
+            if !exited, process.isRunning {
+                kill(pid, SIGKILL)
+            }
         }
     }
 

@@ -9,10 +9,10 @@ BrowserIsolator の目的はシンプルです。ローカルのブラウザ環�
 ## 機能
 
 - **独立環境**：環境ごとに別々の Chrome データディレクトリを使用
-- **ワンクリック操作**：メインパネルまたはメニューバーから起動・終了
+- **ワンクリック操作**：メインパネルまたはメニューバーから起動・終了し、終了時は Chrome の終了を待ちます
 - **環境情報表示**：状態、フォルダ、デバッグポート、容量、最終使用日時を表示
 - **名前変更**：環境に分かりやすい名前を付けられます
-- **指紋差異化**：`navigator.hardwareConcurrency` と `navigator.deviceMemory` を環境ごとに変更
+- **指紋差異化**：`navigator.hardwareConcurrency` と `navigator.deviceMemory` を環境ごとに変更し、新しいタブにも反映
 - **ブラウザ自動インストール**：初回起動時に公式 Google Chrome を自動ダウンロード
 - **ローカル保存**：設定、Chrome、環境データはすべて Mac 内に保存
 - **7 言語対応**：中文、English、日本語、한국어、Deutsch、Français、Русский
@@ -65,11 +65,11 @@ BrowserIsolator は独立した公式 Google Chrome を使用します。普段�
 
 ## 使い方
 
-- **起動**：環境行の「起動」をクリック
-- **終了**：実行中の環境で「閉じる」をクリック
+- **起動**：環境行の「起動」をクリック。失敗した場合はエラーが表示されます
+- **終了**：実行中の環境で「閉じる」をクリック。Chrome が終了するまで「終了中」と表示されます
 - **すべて閉じる**：ツールバーの「すべて閉じる」
 - **追加**：ツールバーの「環境を追加」
-- **名前変更 / 削除**：環境を右クリック
+- **名前変更 / 削除**：環境を右クリック。削除はデータフォルダの削除成功後に反映されます
 - **言語切替**：ツールバーまたはメニューバーの地球アイコン
 
 ## データ保存場所
@@ -95,7 +95,7 @@ BrowserIsolator は独立した公式 Google Chrome を使用します。普段�
 
 ### 指紋差異化とは？
 
-Chrome DevTools Protocol で `navigator.hardwareConcurrency` と `navigator.deviceMemory` を環境ごとに設定します。完全なデバイス模擬ではありません。
+Chrome DevTools Protocol で `navigator.hardwareConcurrency` と `navigator.deviceMemory` を環境ごとに設定します。現在の page target を定期的に同期するため、新しく開いたタブにも注入されます。完全なデバイス模擬ではありません。
 
 ### Chrome は自動更新されますか？
 

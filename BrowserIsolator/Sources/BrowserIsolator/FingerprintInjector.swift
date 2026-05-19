@@ -13,7 +13,9 @@ actor FingerprintInjector {
     private let fingerprintScript: String
     private(set) var state: State = .idle
     private var injecting = false
+    private var disconnected = false
     private var injectedTargetIDs: Set<String> = []
+    private static let cdpResponseTimeoutNanoseconds: UInt64 = 10_000_000_000
 
     init(debugPort: Int, instanceNumber: Int) {
         self.debugPort = debugPort
@@ -42,14 +44,19 @@ actor FingerprintInjector {
 
     /// 同步所有 page target 的注入状态。幂等：已注入过的 target 会跳过。
     func startInjection() async {
-        guard !injecting else { return }
+        guard !injecting, !disconnected else { return }
         injecting = true
         state = .waiting
+        defer { injecting = false }
 
         do {
             let targets = try await pollPageTargets()
             var injectedCount = 0
             for target in targets where !injectedTargetIDs.contains(target.id) {
+                guard !disconnected else {
+                    state = .idle
+                    return
+                }
                 try await inject(target: target)
                 injectedTargetIDs.insert(target.id)
                 injectedCount += 1
@@ -62,11 +69,11 @@ actor FingerprintInjector {
             state = .idle
             print("[Fingerprint] 注入失败 port=\(debugPort): \(error.localizedDescription)")
         }
-        injecting = false
     }
 
     /// 断开连接（profile 停止时调用）
     func disconnect() {
+        disconnected = true
         state = .idle
         injecting = false
         injectedTargetIDs.removeAll()
@@ -86,6 +93,7 @@ actor FingerprintInjector {
         var delay: UInt64 = 200_000_000 // 200ms
         let maxDelay: UInt64 = 2_000_000_000 // 2s
         for attempt in 1...15 {
+            if disconnected { throw InjectorError.connectionClosed }
             do {
                 let (data, response) = try await URLSession.shared.data(from: url)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
@@ -108,6 +116,7 @@ actor FingerprintInjector {
     // MARK: - WebSocket 连接 + CDP 注入
 
     private func inject(target: CDPTarget) async throws {
+        if disconnected { throw InjectorError.connectionClosed }
         guard let wsURL = target.webSocketDebuggerUrl,
               let url = URL(string: wsURL) else {
             throw InjectorError.invalidURL
@@ -137,6 +146,7 @@ actor FingerprintInjector {
         method: String,
         params: [String: Any]
     ) async throws {
+        if disconnected { throw InjectorError.connectionClosed }
         let payload: [String: Any] = [
             "id": id,
             "method": method,
@@ -150,16 +160,7 @@ actor FingerprintInjector {
 
     private func waitForCDPResponse(task: URLSessionWebSocketTask, id: Int) async throws {
         while true {
-            let message = try await task.receive()
-            let data: Data
-            switch message {
-            case .data(let payload):
-                data = payload
-            case .string(let text):
-                data = Data(text.utf8)
-            @unknown default:
-                continue
-            }
+            let data = try await receiveCDPMessageData(task: task, id: id)
 
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   json["id"] as? Int == id else {
@@ -173,6 +174,32 @@ actor FingerprintInjector {
         }
     }
 
+    private func receiveCDPMessageData(task: URLSessionWebSocketTask, id: Int) async throws -> Data {
+        try await withThrowingTaskGroup(of: Data.self) { group in
+            group.addTask {
+                let message = try await task.receive()
+                switch message {
+                case .data(let payload):
+                    return payload
+                case .string(let text):
+                    return Data(text.utf8)
+                @unknown default:
+                    throw InjectorError.connectionClosed
+                }
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: Self.cdpResponseTimeoutNanoseconds)
+                throw InjectorError.cdpResponseTimeout(id)
+            }
+
+            guard let data = try await group.next() else {
+                throw InjectorError.cdpResponseTimeout(id)
+            }
+            group.cancelAll()
+            return data
+        }
+    }
+
     // MARK: - 错误定义
 
     enum InjectorError: LocalizedError {
@@ -180,6 +207,7 @@ actor FingerprintInjector {
         case invalidURL
         case noPageTargets
         case cdpCommandFailed(String)
+        case cdpResponseTimeout(Int)
         case connectionClosed
 
         var errorDescription: String? {
@@ -188,6 +216,7 @@ actor FingerprintInjector {
             case .invalidURL: return "无效的 WebSocket URL"
             case .noPageTargets: return "Chrome page target 未就绪"
             case .cdpCommandFailed(let message): return message
+            case .cdpResponseTimeout(let id): return "等待 CDP 响应超时（command id: \(id)）"
             case .connectionClosed: return "连接已关闭"
             }
         }

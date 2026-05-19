@@ -9,10 +9,10 @@ BrowserIsolator verfolgt ein klares Ziel: lokale Browser-Umgebungen zuverlässig
 ## Funktionen
 
 - **Isolierte Umgebungen**: jede Umgebung nutzt ein eigenes Chrome-Datenverzeichnis
-- **Schnelle Steuerung**: Starten, Schließen und Alle schließen im Hauptfenster oder in der Menüleiste
+- **Schnelle Steuerung**: Starten, Schließen und Alle schließen im Hauptfenster oder in der Menüleiste; beim Schließen wartet die App auf das Ende von Chrome
 - **Umgebungsdetails**: Status, Ordner, Debug-Port, Speicherplatz und letzte Nutzung
 - **Eigene Namen**: Umgebungen per Kontextmenü benennen
-- **Fingerprint-Variation**: unterschiedliche Werte für `navigator.hardwareConcurrency` und `navigator.deviceMemory`
+- **Fingerprint-Variation**: unterschiedliche Werte für `navigator.hardwareConcurrency` und `navigator.deviceMemory`, auch in neu geöffneten Tabs
 - **Automatische Browser-Installation**: offizielles Google Chrome wird beim ersten Start geladen
 - **Lokal zuerst**: Konfiguration und Profildaten bleiben auf dem Mac
 - **7 Sprachen**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
@@ -65,11 +65,11 @@ Falls der automatische Download fehlschlägt, lade Google Chrome manuell herunte
 
 ## Verwendung
 
-- **Starten**: Start in einer Umgebungszeile klicken
-- **Schließen**: Schließen bei einer laufenden Umgebung klicken
+- **Starten**: Start in einer Umgebungszeile klicken; bei Fehlern zeigt die App eine Meldung
+- **Schließen**: Schließen bei einer laufenden Umgebung klicken; bis Chrome beendet ist, erscheint der Status Schließt
 - **Alle schließen**: Alle schließen in der Symbolleiste
 - **Hinzufügen**: Umgebung hinzufügen in der Symbolleiste
-- **Umbenennen / Löschen**: Rechtsklick auf eine Umgebung
+- **Umbenennen / Löschen**: Rechtsklick auf eine Umgebung; Löschen wird erst nach erfolgreichem Entfernen des Datenordners übernommen
 - **Sprache wechseln**: Globus-Menü in Symbolleiste oder Menüleiste
 
 ## Datenort
@@ -95,7 +95,7 @@ Nein, das kann nicht garantiert werden. BrowserIsolator bietet lokale Datentrenn
 
 ### Was macht die Fingerprint-Variation?
 
-Über Chrome DevTools Protocol werden `navigator.hardwareConcurrency` und `navigator.deviceMemory` je Umgebung gesetzt. Das ist keine vollständige Gerätesimulation.
+Über Chrome DevTools Protocol werden `navigator.hardwareConcurrency` und `navigator.deviceMemory` je Umgebung gesetzt. BrowserIsolator synchronisiert regelmäßig aktuelle page targets, daher werden auch neue Tabs injiziert. Das ist keine vollständige Gerätesimulation.
 
 ### Aktualisiert sich Chrome automatisch?
 

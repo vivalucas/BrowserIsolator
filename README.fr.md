@@ -9,10 +9,10 @@ BrowserIsolator a un objectif précis : isoler proprement les environnements de 
 ## Fonctionnalités
 
 - **Environnements isolés** : chaque environnement utilise son propre dossier de données Chrome
-- **Contrôle rapide** : démarrer, fermer ou tout fermer depuis le panneau principal ou la barre de menus
+- **Contrôle rapide** : démarrer, fermer ou tout fermer depuis le panneau principal ou la barre de menus ; la fermeture attend que Chrome quitte
 - **Informations d'environnement** : état, dossier, port de débogage, espace disque et dernière utilisation
 - **Noms personnalisés** : renommer les environnements depuis le menu contextuel
-- **Variation d'empreinte** : valeurs différentes pour `navigator.hardwareConcurrency` et `navigator.deviceMemory`
+- **Variation d'empreinte** : valeurs différentes pour `navigator.hardwareConcurrency` et `navigator.deviceMemory`, y compris dans les nouveaux onglets
 - **Installation automatique du navigateur** : téléchargement de Google Chrome officiel au premier lancement
 - **Local d'abord** : configuration et profils restent sur le Mac
 - **7 langues** : 中文, English, 日本語, 한국어, Deutsch, Français, Русский
@@ -65,11 +65,11 @@ Si le téléchargement automatique échoue, téléchargez Google Chrome manuelle
 
 ## Utilisation
 
-- **Démarrer** : cliquez sur Démarrer dans une ligne d'environnement
-- **Fermer** : cliquez sur Fermer pour un environnement en cours
+- **Démarrer** : cliquez sur Démarrer dans une ligne d'environnement ; une erreur s'affiche en cas d'échec
+- **Fermer** : cliquez sur Fermer pour un environnement en cours ; l'état Fermeture reste affiché jusqu'à la sortie de Chrome
 - **Tout fermer** : utilisez Tout fermer dans la barre d'outils
 - **Ajouter** : cliquez sur Ajouter un environnement
-- **Renommer / Supprimer** : clic droit sur un environnement
+- **Renommer / Supprimer** : clic droit sur un environnement ; la suppression n'est appliquée qu'après suppression réussie du dossier de données
 - **Langue** : menu globe dans la barre d'outils ou la barre de menus
 
 ## Emplacement des données
@@ -95,7 +95,7 @@ Non garanti. BrowserIsolator fournit une isolation locale et une légère variat
 
 ### Que fait la variation d'empreinte ?
 
-Chrome DevTools Protocol définit `navigator.hardwareConcurrency` et `navigator.deviceMemory` par environnement. Ce n'est pas une simulation complète d'appareil.
+Chrome DevTools Protocol définit `navigator.hardwareConcurrency` et `navigator.deviceMemory` par environnement. BrowserIsolator synchronise régulièrement les page targets actuelles, donc les nouveaux onglets sont aussi injectés. Ce n'est pas une simulation complète d'appareil.
 
 ### Chrome se met-il à jour automatiquement ?
 

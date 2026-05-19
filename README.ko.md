@@ -9,10 +9,10 @@ BrowserIsolator의 목표는 명확합니다. 로컬 브라우저 환경을 안�
 ## 기능
 
 - **독립 환경**: 환경마다 별도의 Chrome 데이터 디렉터리 사용
-- **빠른 실행/종료**: 메인 패널 또는 메뉴 막대에서 시작, 닫기, 모두 닫기
+- **빠른 실행/종료**: 메인 패널 또는 메뉴 막대에서 시작, 닫기, 모두 닫기. 닫을 때 Chrome 종료를 기다립니다
 - **환경 정보 표시**: 상태, 폴더, 디버깅 포트, 디스크 사용량, 마지막 사용 시간
 - **사용자 지정 이름**: 계정이나 용도에 맞게 환경 이름 변경
-- **지문 차별화**: 환경별 `navigator.hardwareConcurrency`, `navigator.deviceMemory` 값 주입
+- **지문 차별화**: 환경별 `navigator.hardwareConcurrency`, `navigator.deviceMemory` 값 주입, 새 탭에도 적용
 - **브라우저 자동 설치**: 처음 실행할 때 공식 Google Chrome 자동 다운로드
 - **로컬 우선**: 설정과 모든 환경 데이터는 Mac에만 저장
 - **7개 언어 지원**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
@@ -65,11 +65,11 @@ BrowserIsolator는 별도의 공식 Google Chrome 복사본을 사용합니다. 
 
 ## 사용법
 
-- **시작**: 환경 행의 시작 클릭
-- **닫기**: 실행 중인 환경의 닫기 클릭
+- **시작**: 환경 행의 시작 클릭. 실패하면 오류가 표시됩니다
+- **닫기**: 실행 중인 환경의 닫기 클릭. Chrome이 종료될 때까지 닫는 중 상태가 표시됩니다
 - **모두 닫기**: 툴바의 모두 닫기
 - **추가**: 툴바의 환경 추가
-- **이름 변경 / 삭제**: 환경을 우클릭
+- **이름 변경 / 삭제**: 환경을 우클릭. 삭제는 데이터 폴더가 성공적으로 삭제된 뒤 반영됩니다
 - **언어 변경**: 툴바 또는 메뉴 막대의 지구본 메뉴
 
 ## 데이터 위치
@@ -95,7 +95,7 @@ BrowserIsolator는 별도의 공식 Google Chrome 복사본을 사용합니다. 
 
 ### 지문 차별화는 무엇을 하나요?
 
-Chrome DevTools Protocol로 `navigator.hardwareConcurrency`와 `navigator.deviceMemory` 값을 환경별로 설정합니다. 완전한 기기 시뮬레이션은 아닙니다.
+Chrome DevTools Protocol로 `navigator.hardwareConcurrency`와 `navigator.deviceMemory` 값을 환경별로 설정합니다. 현재 page target을 주기적으로 동기화하므로 새로 연 탭에도 주입됩니다. 완전한 기기 시뮬레이션은 아닙니다.
 
 ### Chrome은 자동 업데이트되나요?
 
