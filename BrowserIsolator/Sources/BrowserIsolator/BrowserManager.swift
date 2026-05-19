@@ -49,7 +49,6 @@ class BrowserManager: ObservableObject {
     private var processes: [String: Process] = [:]
     private var fingerprintInjectors: [String: FingerprintInjector] = [:]
     private var debugPorts: [String: Int] = [:]
-    private var refreshTimer: Timer?
 
     // Chrome 官方下载地址（Universal 版本，支持 Intel 和 Apple Silicon）
     private let chromeDownloadURL = "https://dl.google.com/chrome/mac/universal/stable/GGRO/googlechrome.dmg"
@@ -110,7 +109,6 @@ class BrowserManager: ObservableObject {
         self.config = configStore.load()
         BrowserManager.shared = self
         ensureProfileDirs()
-        refreshRunningStatus()
 
         chromiumReady = isChromiumExecutableReady()
         if !chromiumReady {
@@ -143,17 +141,21 @@ class BrowserManager: ObservableObject {
                 "--test-type",
                 "--remote-debugging-port=\(debugPort)"
             ]
+            process.terminationHandler = { [weak self, folder = profile.folder] _ in
+                Task { @MainActor in
+                    self?.handleProcessTerminated(folder)
+                }
+            }
             try process.run()
             processes[profile.folder] = process
             debugPorts[profile.folder] = debugPort
             runningProfiles.insert(profile.folder)
-            startAutoRefresh()
             profileLastUsed[profile.folder] = Date()
 
-            // 启动指纹注入
+            // 启动 browser-level CDP 监听；新 tab 由 Target 事件驱动注入。
             let injector = FingerprintInjector(debugPort: debugPort, instanceNumber: profile.instanceNumber)
             fingerprintInjectors[profile.folder] = injector
-            Task.detached { await injector.startInjection() }
+            Task { await injector.startInjection() }
 
             // 启动成功，延迟移除 starting 状态，让用户能看到反馈
             Task {
@@ -208,6 +210,7 @@ class BrowserManager: ObservableObject {
             return
         }
         let pid = process.processIdentifier
+        process.terminationHandler = nil
         kill(pid, SIGTERM)
         Task { [weak self, folder = profile.folder] in
             await Self.waitForProcessExit(process, pid: pid, timeout: 5)
@@ -224,21 +227,14 @@ class BrowserManager: ObservableObject {
         let processesToStop = processes
         stoppingProfiles.formUnion(stoppedFolders)
         for (_, process) in processesToStop where process.isRunning {
+            process.terminationHandler = nil
             kill(process.processIdentifier, SIGTERM)
         }
         Task { [weak self] in
             for (_, process) in processesToStop where process.isRunning {
                 await Self.waitForProcessExit(process, pid: process.processIdentifier, timeout: 5)
             }
-            let now = Date()
-            for folder in stoppedFolders {
-                self?.profileLastUsed[folder] = now
-            }
-            self?.processes.removeAll()
-            self?.runningProfiles.removeAll()
-            self?.stoppingProfiles.removeAll()
-            self?.scanProfileInfo()
-            self?.stopAutoRefreshIfIdle()
+            self?.finishStoppedProfiles(stoppedFolders)
         }
     }
 
@@ -258,13 +254,12 @@ class BrowserManager: ObservableObject {
 
     /// 发送 SIGTERM 并等待所有进程真正退出（用于 app 退出时调用）
     func stopAllAndWait() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
         for (_, injector) in fingerprintInjectors { Task { await injector.disconnect() } }
         fingerprintInjectors.removeAll()
         debugPorts.removeAll()
         var running: [(Process, pid_t)] = []
         for (_, process) in processes {
+            process.terminationHandler = nil
             if process.isRunning {
                 running.append((process, process.processIdentifier))
             }
@@ -293,70 +288,44 @@ class BrowserManager: ObservableObject {
 
     // MARK: - 状态检测
 
-    func refreshRunningStatus() {
-        var toRemove: [String] = []
-        for (folder, process) in processes {
-            if !process.isRunning {
-                toRemove.append(folder)
-            }
-        }
-        for folder in toRemove {
-            processes.removeValue(forKey: folder)
-            runningProfiles.remove(folder)
-            debugPorts.removeValue(forKey: folder)
-            if let injector = fingerprintInjectors.removeValue(forKey: folder) {
-                Task { await injector.disconnect() }
-            }
-        }
-        if !toRemove.isEmpty {
-            scanProfileInfo()
-        }
+    @discardableResult
+    private func finishStoppedProfile(_ folder: String) -> Bool {
+        let hadProcess = processes.removeValue(forKey: folder) != nil
+        let wasRunning = runningProfiles.contains(folder)
+        let wasStopping = stoppingProfiles.contains(folder)
+        guard hadProcess || wasRunning || wasStopping else { return false }
 
-        guard !runningProfiles.isEmpty else {
-            refreshTimer?.invalidate()
-            refreshTimer = nil
-            return
-        }
-
-        // CDP 注入同步：周期性扫描新的 page target，已注入过的 target 会在 actor 内跳过。
-        Task {
-            for folder in runningProfiles {
-                let injector: FingerprintInjector
-                if let existing = fingerprintInjectors[folder] {
-                    injector = existing
-                } else {
-                    guard let profile = config.profiles.first(where: { $0.folder == folder }) else { continue }
-                    let port = debugPorts[folder] ?? (40000 + profile.instanceNumber)
-                    injector = FingerprintInjector(debugPort: port, instanceNumber: profile.instanceNumber)
-                    fingerprintInjectors[folder] = injector
-                }
-                await injector.startInjection()
-            }
-        }
-    }
-
-    private func startAutoRefresh() {
-        guard refreshTimer == nil, !runningProfiles.isEmpty else { return }
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.refreshRunningStatus()
-            }
-        }
-    }
-
-    private func stopAutoRefreshIfIdle() {
-        guard runningProfiles.isEmpty else { return }
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-    }
-
-    private func finishStoppedProfile(_ folder: String) {
-        processes.removeValue(forKey: folder)
         runningProfiles.remove(folder)
         stoppingProfiles.remove(folder)
         profileLastUsed[folder] = Date()
         scanProfileInfo()
-        stopAutoRefreshIfIdle()
+        return true
+    }
+
+    private func finishStoppedProfiles(_ folders: [String]) {
+        let now = Date()
+        var changed = false
+        for folder in folders {
+            let hadProcess = processes.removeValue(forKey: folder) != nil
+            let wasRunning = runningProfiles.contains(folder)
+            let wasStopping = stoppingProfiles.contains(folder)
+            guard hadProcess || wasRunning || wasStopping else { continue }
+            runningProfiles.remove(folder)
+            stoppingProfiles.remove(folder)
+            profileLastUsed[folder] = now
+            changed = true
+        }
+        if changed {
+            scanProfileInfo()
+        }
+    }
+
+    private func handleProcessTerminated(_ folder: String) {
+        if let injector = fingerprintInjectors.removeValue(forKey: folder) {
+            Task { await injector.disconnect() }
+        }
+        debugPorts.removeValue(forKey: folder)
+        finishStoppedProfile(folder)
     }
 
     // MARK: - Profile 管理

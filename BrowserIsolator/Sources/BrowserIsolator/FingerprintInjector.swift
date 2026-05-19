@@ -5,17 +5,25 @@ actor FingerprintInjector {
 
     enum State: String {
         case idle       // 未开始
-        case waiting    // 轮询等待 CDP 就绪
+        case waiting    // 等待 CDP 就绪
         case injected   // 已成功注入
     }
 
     private let debugPort: Int
     private let fingerprintScript: String
     private(set) var state: State = .idle
-    private var injecting = false
+    private var starting = false
     private var disconnected = false
     private var injectedTargetIDs: Set<String> = []
+    private var attachingTargetIDs: Set<String> = []
+    private var browserTask: URLSessionWebSocketTask?
+    private var listenTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
+    private var reconnectAttempts = 0
+    private var nextCommandID = 1
+    private var pendingResponses: [Int: CheckedContinuation<Void, Error>] = [:]
     private static let cdpResponseTimeoutNanoseconds: UInt64 = 10_000_000_000
+    private static let maximumReconnectAttempts = 5
 
     init(debugPort: Int, instanceNumber: Int) {
         self.debugPort = debugPort
@@ -42,32 +50,48 @@ actor FingerprintInjector {
 
     func currentState() -> State { state }
 
-    /// 同步所有 page target 的注入状态。幂等：已注入过的 target 会跳过。
+    /// 启动 browser-level CDP 监听。首次同步当前 page target，之后由 Target 事件驱动注入新 target。
     func startInjection() async {
-        guard !injecting, !disconnected else { return }
-        injecting = true
+        guard !starting, browserTask == nil, !disconnected else { return }
+        starting = true
         state = .waiting
-        defer { injecting = false }
+        defer { starting = false }
 
         do {
-            let targets = try await pollPageTargets()
-            var injectedCount = 0
-            for target in targets where !injectedTargetIDs.contains(target.id) {
-                guard !disconnected else {
-                    state = .idle
-                    return
-                }
-                try await inject(target: target)
-                injectedTargetIDs.insert(target.id)
-                injectedCount += 1
+            let browserURL = try await pollBrowserWebSocketURL()
+            let task = URLSession.shared.webSocketTask(with: browserURL)
+            browserTask = task
+            task.resume()
+            listenTask = Task { await listenForBrowserEvents(task: task) }
+
+            try await sendBrowserCommand(
+                task: task,
+                method: "Target.setDiscoverTargets",
+                params: ["discover": true]
+            )
+            try await sendBrowserCommand(
+                task: task,
+                method: "Target.setAutoAttach",
+                params: [
+                    "autoAttach": true,
+                    "waitForDebuggerOnStart": false,
+                    "flatten": true
+                ]
+            )
+
+            for target in try await pollPageTargets() {
+                try await attachToTargetIfNeeded(target.id, task: task)
             }
             state = .injected
-            if injectedCount > 0 {
-                print("[Fingerprint] 注入成功 port=\(debugPort) targets=\(injectedCount)")
-            }
+            reconnectAttempts = 0
+            print("[Fingerprint] CDP 监听已启动 port=\(debugPort)")
         } catch {
+            closeBrowserConnection()
             state = .idle
-            print("[Fingerprint] 注入失败 port=\(debugPort): \(error.localizedDescription)")
+            if !disconnected {
+                print("[Fingerprint] 注入监听启动失败 port=\(debugPort): \(error.localizedDescription)")
+                scheduleReconnect()
+            }
         }
     }
 
@@ -75,11 +99,19 @@ actor FingerprintInjector {
     func disconnect() {
         disconnected = true
         state = .idle
-        injecting = false
+        starting = false
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        closeBrowserConnection()
         injectedTargetIDs.removeAll()
+        attachingTargetIDs.removeAll()
     }
 
     // MARK: - HTTP 轮询
+
+    private struct CDPVersion: Decodable {
+        let webSocketDebuggerUrl: String
+    }
 
     private struct CDPTarget: Decodable {
         let id: String
@@ -87,21 +119,23 @@ actor FingerprintInjector {
         let webSocketDebuggerUrl: String?
     }
 
-    /// 轮询 CDP HTTP 端点，等待至少一个 page target 就绪（指数退避）
-    private func pollPageTargets() async throws -> [CDPTarget] {
-        let url = URL(string: "http://127.0.0.1:\(debugPort)/json")!
-        var delay: UInt64 = 200_000_000 // 200ms
-        let maxDelay: UInt64 = 2_000_000_000 // 2s
+    /// 轮询 browser-level WebSocket 地址，等待 CDP 就绪（指数退避）。
+    private func pollBrowserWebSocketURL() async throws -> URL {
+        let url = URL(string: "http://127.0.0.1:\(debugPort)/json/version")!
+        var delay: UInt64 = 200_000_000
+        let maxDelay: UInt64 = 2_000_000_000
         for attempt in 1...15 {
             if disconnected { throw InjectorError.connectionClosed }
             do {
                 let (data, response) = try await URLSession.shared.data(from: url)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
-                let targets = try JSONDecoder().decode([CDPTarget].self, from: data)
-                    .filter { $0.type == "page" && $0.webSocketDebuggerUrl != nil }
-                if !targets.isEmpty {
-                    return targets
+                let version = try JSONDecoder().decode(CDPVersion.self, from: data)
+                guard let browserURL = URL(string: version.webSocketDebuggerUrl) else {
+                    throw InjectorError.invalidURL
                 }
+                return browserURL
+            } catch InjectorError.invalidURL {
+                throw InjectorError.invalidURL
             } catch {
                 // Chrome 还没就绪，继续等待
             }
@@ -110,93 +144,214 @@ actor FingerprintInjector {
                 delay = min(delay * 2, maxDelay)
             }
         }
-        throw InjectorError.noPageTargets
+        throw InjectorError.cdpNotReady
     }
 
-    // MARK: - WebSocket 连接 + CDP 注入
-
-    private func inject(target: CDPTarget) async throws {
+    /// 启动时同步一次当前 page target；后续新 target 由 browser WebSocket 事件驱动。
+    private func pollPageTargets() async throws -> [CDPTarget] {
+        let url = URL(string: "http://127.0.0.1:\(debugPort)/json")!
         if disconnected { throw InjectorError.connectionClosed }
-        guard let wsURL = target.webSocketDebuggerUrl,
-              let url = URL(string: wsURL) else {
-            throw InjectorError.invalidURL
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw InjectorError.noPageTargets
         }
-
-        let task = URLSession.shared.webSocketTask(with: url)
-        task.resume()
-        defer { task.cancel(with: .normalClosure, reason: nil) }
-
-        try await sendCDPCommand(
-            task: task,
-            id: 1,
-            method: "Page.addScriptToEvaluateOnNewDocument",
-            params: ["source": fingerprintScript]
-        )
-        try await sendCDPCommand(
-            task: task,
-            id: 2,
-            method: "Runtime.evaluate",
-            params: ["expression": fingerprintScript]
-        )
+        return try JSONDecoder().decode([CDPTarget].self, from: data)
+            .filter { $0.type == "page" }
     }
 
-    private func sendCDPCommand(
-        task: URLSessionWebSocketTask,
-        id: Int,
-        method: String,
-        params: [String: Any]
-    ) async throws {
-        if disconnected { throw InjectorError.connectionClosed }
-        let payload: [String: Any] = [
-            "id": id,
-            "method": method,
-            "params": params
-        ]
-        let data = try JSONSerialization.data(withJSONObject: payload)
-        let text = String(data: data, encoding: .utf8) ?? "{}"
-        try await task.send(.string(text))
-        try await waitForCDPResponse(task: task, id: id)
-    }
+    // MARK: - Browser WebSocket 事件驱动注入
 
-    private func waitForCDPResponse(task: URLSessionWebSocketTask, id: Int) async throws {
-        while true {
-            let data = try await receiveCDPMessageData(task: task, id: id)
-
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  json["id"] as? Int == id else {
-                continue
+    private func listenForBrowserEvents(task: URLSessionWebSocketTask) async {
+        while !disconnected {
+            do {
+                let data = try await receiveWebSocketMessageData(task)
+                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                await handleBrowserMessage(json, task: task)
+            } catch {
+                if !disconnected {
+                    print("[Fingerprint] CDP 监听断开 port=\(debugPort): \(error.localizedDescription)")
+                }
+                break
             }
+        }
+        handleBrowserDisconnect()
+    }
+
+    private func handleBrowserMessage(_ json: [String: Any], task: URLSessionWebSocketTask) async {
+        if let id = json["id"] as? Int,
+           let continuation = pendingResponses.removeValue(forKey: id) {
             if let error = json["error"] as? [String: Any] {
                 let message = error["message"] as? String ?? "CDP command failed"
-                throw InjectorError.cdpCommandFailed(message)
+                continuation.resume(throwing: InjectorError.cdpCommandFailed(message))
+            } else {
+                continuation.resume()
             }
             return
         }
-    }
 
-    private func receiveCDPMessageData(task: URLSessionWebSocketTask, id: Int) async throws -> Data {
-        try await withThrowingTaskGroup(of: Data.self) { group in
-            group.addTask {
-                let message = try await task.receive()
-                switch message {
-                case .data(let payload):
-                    return payload
-                case .string(let text):
-                    return Data(text.utf8)
-                @unknown default:
-                    throw InjectorError.connectionClosed
+        guard let method = json["method"] as? String,
+              let params = json["params"] as? [String: Any] else { return }
+
+        switch method {
+        case "Target.attachedToTarget":
+            guard let sessionID = params["sessionId"] as? String,
+                  let targetInfo = params["targetInfo"] as? [String: Any],
+                  targetInfo["type"] as? String == "page",
+                  let targetID = targetInfo["targetId"] as? String else { return }
+            Task {
+                do {
+                    try await self.injectSession(sessionID: sessionID, targetID: targetID, task: task)
+                } catch {
+                    self.logInjectionFailure(targetID: targetID, error: error)
                 }
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: Self.cdpResponseTimeoutNanoseconds)
-                throw InjectorError.cdpResponseTimeout(id)
-            }
+        default:
+            break
+        }
+    }
 
-            guard let data = try await group.next() else {
-                throw InjectorError.cdpResponseTimeout(id)
+    private func handleBrowserDisconnect() {
+        guard browserTask != nil else { return }
+        closeBrowserConnection()
+        if !disconnected {
+            state = .idle
+            scheduleReconnect()
+        }
+    }
+
+    private func scheduleReconnect() {
+        guard reconnectTask == nil,
+              !starting,
+              browserTask == nil,
+              !disconnected,
+              reconnectAttempts < Self.maximumReconnectAttempts else { return }
+
+        reconnectAttempts += 1
+        let delaySeconds = min(30, 1 << min(reconnectAttempts, 5))
+        reconnectTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds) * 1_000_000_000)
+            await self.runScheduledReconnect()
+        }
+    }
+
+    private func runScheduledReconnect() async {
+        reconnectTask = nil
+        guard !disconnected, browserTask == nil else { return }
+        await startInjection()
+    }
+
+    private func attachToTargetIfNeeded(_ targetID: String, task: URLSessionWebSocketTask) async throws {
+        guard !injectedTargetIDs.contains(targetID),
+              !attachingTargetIDs.contains(targetID),
+              !disconnected else { return }
+        attachingTargetIDs.insert(targetID)
+        do {
+            try await sendBrowserCommand(
+                task: task,
+                method: "Target.attachToTarget",
+                params: [
+                    "targetId": targetID,
+                    "flatten": true
+                ]
+            )
+        } catch {
+            attachingTargetIDs.remove(targetID)
+            throw error
+        }
+    }
+
+    private func injectSession(sessionID: String, targetID: String, task: URLSessionWebSocketTask) async throws {
+        if disconnected { throw InjectorError.connectionClosed }
+        guard !injectedTargetIDs.contains(targetID) else { return }
+        defer { attachingTargetIDs.remove(targetID) }
+
+        try await sendBrowserCommand(
+            task: task,
+            method: "Page.addScriptToEvaluateOnNewDocument",
+            params: ["source": fingerprintScript],
+            sessionID: sessionID
+        )
+        try await sendBrowserCommand(
+            task: task,
+            method: "Runtime.evaluate",
+            params: ["expression": fingerprintScript],
+            sessionID: sessionID
+        )
+        injectedTargetIDs.insert(targetID)
+        state = .injected
+        print("[Fingerprint] 注入成功 port=\(debugPort) target=\(targetID)")
+    }
+
+    private func sendBrowserCommand(
+        task: URLSessionWebSocketTask,
+        method: String,
+        params: [String: Any],
+        sessionID: String? = nil
+    ) async throws {
+        if disconnected { throw InjectorError.connectionClosed }
+        let id = nextCommandID
+        nextCommandID += 1
+
+        var payload: [String: Any] = ["id": id, "method": method, "params": params]
+        if let sessionID {
+            payload["sessionId"] = sessionID
+        }
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        let text = String(data: data, encoding: .utf8) ?? "{}"
+        try await withCheckedThrowingContinuation { continuation in
+            pendingResponses[id] = continuation
+            Task {
+                do {
+                    try await task.send(.string(text))
+                } catch {
+                    self.finishPendingResponse(id: id, result: .failure(error))
+                }
             }
-            group.cancelAll()
-            return data
+            Task {
+                try? await Task.sleep(nanoseconds: Self.cdpResponseTimeoutNanoseconds)
+                self.finishPendingResponse(id: id, result: .failure(InjectorError.cdpResponseTimeout(id)))
+            }
+        }
+    }
+
+    private func finishPendingResponse(id: Int, result: Result<Void, Error>) {
+        guard let continuation = pendingResponses.removeValue(forKey: id) else { return }
+        switch result {
+        case .success:
+            continuation.resume()
+        case .failure(let error):
+            continuation.resume(throwing: error)
+        }
+    }
+
+    private func receiveWebSocketMessageData(_ task: URLSessionWebSocketTask) async throws -> Data {
+        let message = try await task.receive()
+        switch message {
+        case .data(let payload):
+            return payload
+        case .string(let text):
+            return Data(text.utf8)
+        @unknown default:
+            throw InjectorError.connectionClosed
+        }
+    }
+
+    private func closeBrowserConnection() {
+        listenTask?.cancel()
+        listenTask = nil
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        browserTask?.cancel(with: .normalClosure, reason: nil)
+        browserTask = nil
+        for (_, continuation) in pendingResponses {
+            continuation.resume(throwing: InjectorError.connectionClosed)
+        }
+        pendingResponses.removeAll()
+    }
+
+    private func logInjectionFailure(targetID: String, error: Error) {
+        if !disconnected {
+            print("[Fingerprint] 注入失败 port=\(debugPort) target=\(targetID): \(error.localizedDescription)")
         }
     }
 
