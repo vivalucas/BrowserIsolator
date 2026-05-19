@@ -209,11 +209,9 @@ class BrowserManager: ObservableObject {
         }
         let pid = process.processIdentifier
         kill(pid, SIGTERM)
-        Task.detached { [weak self] in
+        Task { [weak self, folder = profile.folder] in
             await Self.waitForProcessExit(process, pid: pid, timeout: 5)
-            await MainActor.run {
-                self?.finishStoppedProfile(profile.folder)
-            }
+            self?.finishStoppedProfile(folder)
         }
     }
 
@@ -228,21 +226,19 @@ class BrowserManager: ObservableObject {
         for (_, process) in processesToStop where process.isRunning {
             kill(process.processIdentifier, SIGTERM)
         }
-        Task.detached { [weak self] in
+        Task { [weak self] in
             for (_, process) in processesToStop where process.isRunning {
                 await Self.waitForProcessExit(process, pid: process.processIdentifier, timeout: 5)
             }
-            await MainActor.run {
-                let now = Date()
-                for folder in stoppedFolders {
-                    self?.profileLastUsed[folder] = now
-                }
-                self?.processes.removeAll()
-                self?.runningProfiles.removeAll()
-                self?.stoppingProfiles.removeAll()
-                self?.scanProfileInfo()
-                self?.stopAutoRefreshIfIdle()
+            let now = Date()
+            for folder in stoppedFolders {
+                self?.profileLastUsed[folder] = now
             }
+            self?.processes.removeAll()
+            self?.runningProfiles.removeAll()
+            self?.stoppingProfiles.removeAll()
+            self?.scanProfileInfo()
+            self?.stopAutoRefreshIfIdle()
         }
     }
 
