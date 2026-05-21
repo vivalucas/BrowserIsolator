@@ -849,10 +849,12 @@ struct SettingsView: View {
             settingsHeader
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 18) {
                     SettingsSection(title: l10n.t("settings.browser"), systemImage: "globe") {
                         SettingsLine(label: l10n.t("settings.chrome_status"), value: manager.chromiumReady ? l10n.t("settings.ready") : l10n.t("settings.not_installed"))
+                        SettingsDivider()
                         SettingsLine(label: l10n.t("settings.chrome_version"), value: manager.chromeVersionText ?? l10n.t("settings.unknown"))
+                        SettingsDivider()
                         SettingsButtonRow {
                             Button(l10n.t("settings.open_chrome_folder")) { manager.openChromiumFolder() }
                             Button(l10n.t("settings.redownload_chrome")) { manager.reinstallChromium() }
@@ -862,6 +864,7 @@ struct SettingsView: View {
 
                     SettingsSection(title: l10n.t("settings.data"), systemImage: "folder") {
                         SettingsLine(label: l10n.t("settings.data_path"), value: AppPaths.supportDir.path)
+                        SettingsDivider()
                         SettingsButtonRow {
                             Button(l10n.t("settings.open_data_folder")) { manager.openSupportFolder() }
                             Button(l10n.t("settings.open_profiles_folder")) { manager.openProfilesFolder() }
@@ -873,6 +876,7 @@ struct SettingsView: View {
                         SettingsControlRow(label: l10n.t("language")) {
                             LanguageMenu(l10n: l10n)
                         }
+                        SettingsDivider()
 
                         SettingsControlRow(label: l10n.t("settings.appearance")) {
                             Picker("", selection: $appAppearance) {
@@ -883,12 +887,14 @@ struct SettingsView: View {
                             .pickerStyle(.segmented)
                             .frame(width: 230)
                         }
+                        SettingsDivider()
 
-                        Toggle(l10n.t("settings.show_advanced"), isOn: $showAdvancedDetails)
+                        SettingsToggleRow(label: l10n.t("settings.show_advanced"), isOn: $showAdvancedDetails)
                     }
 
                     SettingsSection(title: l10n.t("settings.help_updates"), systemImage: "questionmark.circle") {
                         SettingsLine(label: l10n.t("settings.app_version"), value: manager.currentVersion)
+                        SettingsDivider()
                         SettingsButtonRow {
                             Button {
                                 manager.checkForUpdates()
@@ -909,21 +915,26 @@ struct SettingsView: View {
                             }
                         }
                         .labelStyle(.titleAndIcon)
+                        SettingsDivider()
 
                         Text(l10n.t("settings.help_hint"))
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-
-                        Text(l10n.t("settings.font_credit"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
                     }
+
+                    Text(l10n.t("settings.font_credit"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 2)
                 }
-                .padding(22)
+                .padding(.horizontal, 26)
+                .padding(.vertical, 22)
             }
         }
-        .frame(width: 560, height: 560)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(width: 580, height: 560)
         .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
         .alert(item: $manager.updateAlert) { alert in
             switch alert {
@@ -962,23 +973,41 @@ struct SettingsView: View {
     }
 
     private var settingsHeader: some View {
-        HStack {
+        ZStack {
             Text(l10n.t("settings.title"))
                 .font(.system(size: 16, weight: .semibold))
-            Spacer()
+            HStack {
+                settingsCloseButton
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 15)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 1)
+        }
+    }
+
+    private var settingsCloseButton: some View {
+        ZStack {
+            Circle()
+                .fill(Color.red.opacity(0.9))
+                .frame(width: 13, height: 13)
             Button {
                 dismiss()
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 15))
+                Image(systemName: "xmark")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.black.opacity(0.58))
+                    .opacity(0.0)
+                    .frame(width: 13, height: 13)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
             .help(l10n.t("common.close"))
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 16)
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private func appearanceTitle(_ appearance: AppAppearance) -> String {
@@ -1002,21 +1031,26 @@ struct SettingsSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 10) {
+        HStack(alignment: .top, spacing: 18) {
+            Label {
+                Text(title)
+            } icon: {
+                Image(systemName: systemImage)
+                    .frame(width: 16)
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 118, alignment: .leading)
+            .padding(.top, 11)
+
+            VStack(alignment: .leading, spacing: 0) {
                 content
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-            }
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.58))
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
     }
 }
@@ -1031,14 +1065,29 @@ struct SettingsControlRow<Content: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 12) {
             Text(label)
                 .foregroundStyle(.secondary)
-                .frame(width: 112, alignment: .leading)
+                .frame(width: 118, alignment: .leading)
             Spacer(minLength: 12)
             content
         }
         .font(.system(size: 12))
+        .frame(minHeight: 32)
+    }
+}
+
+struct SettingsToggleRow: View {
+    let label: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            Text(label)
+                .foregroundStyle(.secondary)
+        }
+        .font(.system(size: 12))
+        .frame(minHeight: 32)
     }
 }
 
@@ -1054,6 +1103,14 @@ struct SettingsButtonRow<Content: View>: View {
             content
         }
         .controlSize(.small)
+        .frame(minHeight: 32, alignment: .leading)
+    }
+}
+
+struct SettingsDivider: View {
+    var body: some View {
+        Divider()
+            .padding(.leading, 118)
     }
 }
 
@@ -1065,13 +1122,14 @@ struct SettingsLine: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(label)
                 .foregroundStyle(.secondary)
-                .frame(width: 110, alignment: .leading)
+                .frame(width: 118, alignment: .leading)
             Text(value)
                 .textSelection(.enabled)
                 .lineLimit(2)
             Spacer(minLength: 0)
         }
         .font(.system(size: 12))
+        .frame(minHeight: 32)
     }
 }
 
