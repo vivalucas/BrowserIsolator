@@ -78,7 +78,7 @@ The download is about 237 MB. BrowserIsolator checks the download response and C
 
 ### macOS may block automatic installation
 
-macOS may show a Privacy & Security prompt saying the app was blocked from modifying apps on your Mac. This can happen because BrowserIsolator copies Chrome into its own Application Support directory.
+macOS may show a Privacy & Security prompt saying the app was blocked from modifying apps on your Mac. This can happen because BrowserIsolator copies Chrome into its own Application Support directory; if you trust this app, allow it so the bundled Chrome installation can finish.
 
 To fix it:
 
