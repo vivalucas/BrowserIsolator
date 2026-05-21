@@ -18,10 +18,6 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 - **Local-first**: configuration, browser files, and profile data stay on your Mac
 - **7 languages**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
-## Font Credit
-
-The letter in the app icon is drawn with MiSans. MiSans is provided by Xiaomi and is described as globally free for commercial use.
-
 ## Requirements
 
 - macOS 13 Ventura or later
@@ -178,3 +174,7 @@ The next launch downloads Chrome again.
 ### How many environments can run at once?
 
 There is no hard limit. Running no more than five at once is recommended, depending on memory, CPU, and the pages open in each environment.
+
+## Notes
+
+The letter in the app icon is drawn with MiSans.

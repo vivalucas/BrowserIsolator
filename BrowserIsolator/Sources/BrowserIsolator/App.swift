@@ -103,17 +103,17 @@ struct MainView: View {
                         )
                         .tag(profile.folder)
                         .contentShape(Rectangle())
-                        .onTapGesture {
+                        .simultaneousGesture(TapGesture().onEnded {
                             selectedProfileID = profile.folder
-                        }
-                        .onTapGesture(count: 2) {
+                        })
+                        .highPriorityGesture(TapGesture(count: 2).onEnded {
                             selectedProfileID = profile.folder
                             if !manager.runningProfiles.contains(profile.folder),
                                !manager.startingProfiles.contains(profile.folder),
                                !manager.stoppingProfiles.contains(profile.folder) {
                                 manager.startProfile(profile)
                             }
-                        }
+                        })
                         .contextMenu {
                             Button(l10n.t("context.rename")) {
                                 renameTarget = profile
