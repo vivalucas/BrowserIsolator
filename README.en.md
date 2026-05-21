@@ -9,12 +9,12 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 ## Features
 
 - **Isolated environments**: each environment uses its own Chrome data directory, keeping login state, cookies, cache, and extension settings separate
-- **One-click control**: start or close environments from the main panel or menu bar, including closing all environments at once; closing waits for Chrome to exit so profile locks are released cleanly
+- **One-click control**: start or close environments from the main panel or menu bar, double-click an environment row to start it, and close all environments at once; closing waits for Chrome to exit so profile locks are released cleanly
 - **Environment details**: the main list focuses on name, status, disk usage, and last-used time; profile paths, debugging ports, and advanced details live in the right-side inspector
 - **Custom names**: name a new environment immediately after creating it, or rename it later from the context menu
 - **Fingerprint variation**: injects different `navigator.hardwareConcurrency` and `navigator.deviceMemory` values per environment, including newly opened tabs
 - **Automatic browser setup**: downloads official Google Chrome on first launch into the app's own data directory
-- **Settings panel**: view Chrome status, data folders, language, and advanced-detail display options
+- **Settings panel**: view Chrome status, data folders, language, advanced-detail display options, and Help & Updates
 - **Local-first**: configuration, browser files, and profile data stay on your Mac
 - **7 languages**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
@@ -106,14 +106,14 @@ Then reopen BrowserIsolator.
 
 ## Usage
 
-- **Start**: click Start on an environment row; if Chrome is unavailable, the port is busy, or the profile is locked, the error appears inline on that row
+- **Start**: click Start on an environment row, double-click the environment row, or use the right-side inspector; if Chrome is unavailable, the port is busy, or the profile is locked, the error appears in the inspector
 - **Close**: click Close on a running environment; the row briefly shows Closing until Chrome exits
 - **Close all**: use Close All in the toolbar; the app waits for all environments to exit
 - **Add**: click Add Environment in the toolbar
 - **Rename**: right-click an environment and choose Rename
 - **Details**: select an environment and use the right-side inspector to view the profile path, debugging port, errors, actions, and advanced details
 - **Delete**: right-click a stopped environment and choose Delete; type the environment name to confirm, then its data is moved to Trash
-- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, or change language
+- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, change language, check for updates, open Releases, or view contact details
 - **Language**: use the globe menu in the toolbar or the menu bar menu
 - **Menu bar**: start, close, change language, check updates, or open the main panel
 

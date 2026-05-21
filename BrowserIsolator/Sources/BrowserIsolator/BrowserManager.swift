@@ -55,6 +55,8 @@ class BrowserManager: ObservableObject {
 
     let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
     private let releasesURL = "https://github.com/vivalucas/BrowserIsolator/releases"
+    private let issuesURL = "https://github.com/vivalucas/BrowserIsolator/issues"
+    let contactEmail = "lucas6.zju@vip.163.com"
     private let latestReleaseAPI = "https://api.github.com/repos/vivalucas/BrowserIsolator/releases/latest"
 
     @Published var profileSizes: [String: Int64] = [:]
@@ -416,6 +418,17 @@ class BrowserManager: ObservableObject {
         if let url = URL(string: releasesURL) {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    func openIssuesPage() {
+        if let url = URL(string: issuesURL) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func copyContactEmail() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(contactEmail, forType: .string)
     }
 
     // MARK: - 下载浏览器

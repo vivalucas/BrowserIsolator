@@ -64,7 +64,7 @@ struct MainView: View {
     @ViewBuilder
     private var profileList: some View {
         HSplitView {
-            List(selection: $selectedProfileID) {
+            List {
                 if sortedProfiles.isEmpty {
                     VStack(spacing: 16) {
                         Spacer()
@@ -85,6 +85,7 @@ struct MainView: View {
                     ForEach(sortedProfiles) { profile in
                         ProfileRow(
                             profile: profile,
+                            isSelected: selectedProfileID == profile.folder,
                             isRunning: manager.runningProfiles.contains(profile.folder),
                             isStarting: manager.startingProfiles.contains(profile.folder),
                             isStopping: manager.stoppingProfiles.contains(profile.folder),
@@ -101,6 +102,18 @@ struct MainView: View {
                             }
                         )
                         .tag(profile.folder)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedProfileID = profile.folder
+                        }
+                        .onTapGesture(count: 2) {
+                            selectedProfileID = profile.folder
+                            if !manager.runningProfiles.contains(profile.folder),
+                               !manager.startingProfiles.contains(profile.folder),
+                               !manager.stoppingProfiles.contains(profile.folder) {
+                                manager.startProfile(profile)
+                            }
+                        }
                         .contextMenu {
                             Button(l10n.t("context.rename")) {
                                 renameTarget = profile
@@ -117,10 +130,11 @@ struct MainView: View {
                             }
                         }
                         .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
-            .listStyle(.inset(alternatesRowBackgrounds: true))
+            .listStyle(.inset(alternatesRowBackgrounds: false))
             .frame(minWidth: 340, idealWidth: 360)
 
             ProfileInspectorView(
@@ -274,6 +288,7 @@ private func formatLastUsed(_ date: Date?, l10n: Localization) -> String? {
 
 struct ProfileRow: View {
     let profile: Profile
+    let isSelected: Bool
     let isRunning: Bool
     let isStarting: Bool
     let isStopping: Bool
@@ -311,6 +326,10 @@ struct ProfileRow: View {
         if isStopping { return .orange }
         if isRunning { return .green }
         return .secondary
+    }
+
+    private var selectionTint: Color {
+        Color(nsColor: .controlAccentColor)
     }
 
     var body: some View {
@@ -367,7 +386,23 @@ struct ProfileRow: View {
                 .help(l10n.t("common.start"))
             }
         }
-        .padding(.vertical, 7)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? selectionTint.opacity(0.11) : Color.clear)
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .opacity(0.35)
+                    }
+                }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isSelected ? selectionTint.opacity(0.65) : Color.clear, lineWidth: 1.2)
+        }
     }
 }
 
@@ -784,6 +819,7 @@ struct SettingsView: View {
     @ObservedObject var l10n: Localization
     @Binding var showAdvancedDetails: Bool
     @Environment(\.dismiss) private var dismiss
+    @State private var showContact: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -836,9 +872,76 @@ struct SettingsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            GroupBox(l10n.t("settings.help_updates")) {
+                VStack(alignment: .leading, spacing: 12) {
+                    SettingsLine(label: l10n.t("settings.app_version"), value: manager.currentVersion)
+
+                    HStack(spacing: 8) {
+                        Button {
+                            manager.checkForUpdates()
+                        } label: {
+                            Label(l10n.t("menu.check_updates"), systemImage: "arrow.down.circle")
+                        }
+
+                        Button {
+                            manager.openReleasesPage()
+                        } label: {
+                            Label(l10n.t("settings.view_releases"), systemImage: "arrow.up.right.square")
+                        }
+
+                        Button {
+                            showContact = true
+                        } label: {
+                            Label(l10n.t("settings.contact"), systemImage: "envelope")
+                        }
+                    }
+                    .labelStyle(.titleAndIcon)
+
+                    Text(l10n.t("settings.help_hint"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(22)
         .frame(width: 520)
+        .alert(item: $manager.updateAlert) { alert in
+            switch alert {
+            case .upToDate:
+                return Alert(
+                    title: Text(l10n.t("update.title")),
+                    message: Text(l10n.t("update.up_to_date")),
+                    dismissButton: .default(Text(l10n.t("common.confirm")))
+                )
+            case .updateAvailable(let latest):
+                return Alert(
+                    title: Text(l10n.t("update.available_title")),
+                    message: Text(l10n.format("update.available_message", latest, manager.currentVersion)),
+                    primaryButton: .default(Text(l10n.t("update.download")), action: { manager.openReleasesPage() }),
+                    secondaryButton: .cancel(Text(l10n.t("common.later")))
+                )
+            case .checkFailed:
+                return Alert(
+                    title: Text(l10n.t("update.title")),
+                    message: Text(l10n.t("update.failed")),
+                    dismissButton: .default(Text(l10n.t("common.confirm")))
+                )
+            }
+        }
+        .alert(l10n.t("settings.contact_title"), isPresented: $showContact) {
+            Button(l10n.t("settings.open_issues")) {
+                manager.openIssuesPage()
+            }
+            Button(l10n.t("settings.copy_email")) {
+                manager.copyContactEmail()
+            }
+            Button(l10n.t("common.confirm"), role: .cancel) {}
+        } message: {
+            Text(l10n.t("settings.contact_body"))
+        }
     }
 }
 
