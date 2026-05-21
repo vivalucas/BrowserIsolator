@@ -14,7 +14,7 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 - **Custom names**: name a new environment immediately after creating it, or rename it later from the context menu
 - **Fingerprint variation**: injects different `navigator.hardwareConcurrency` and `navigator.deviceMemory` values per environment, including newly opened tabs
 - **Automatic browser setup**: downloads official Google Chrome on first launch into the app's own data directory
-- **Settings panel**: view Chrome status, data folders, language, advanced-detail display options, and Help & Updates
+- **Settings panel**: view Chrome status, data folders, language, appearance mode, advanced-detail display options, and Help & Updates
 - **Local-first**: configuration, browser files, and profile data stay on your Mac
 - **7 languages**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
@@ -115,7 +115,7 @@ Then reopen BrowserIsolator.
 - **Rename**: right-click an environment and choose Rename
 - **Details**: select an environment and use the right-side inspector to view the profile path, debugging port, errors, actions, and advanced details
 - **Delete**: right-click a stopped environment and choose Delete; type the environment name to confirm, then its data is moved to Trash
-- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, change language, check for updates, open Releases, or view contact details
+- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, change language or appearance mode, check for updates, open Releases, or view contact details
 - **Language**: use the globe menu in the toolbar or the menu bar menu
 - **Menu bar**: start, close, change language, check updates, or open the main panel
 

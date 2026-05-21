@@ -5,11 +5,17 @@ struct BrowserIsolatorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var manager = BrowserManager()
     @StateObject private var localization = Localization()
+    @AppStorage("AppAppearance") private var appAppearance: String = AppAppearance.system.rawValue
+
+    private var preferredColorScheme: ColorScheme? {
+        AppAppearance(rawValue: appAppearance)?.colorScheme
+    }
 
     var body: some Scene {
         WindowGroup {
             MainView(manager: manager, l10n: localization)
                 .frame(minWidth: 680, idealWidth: 760, minHeight: 420)
+                .preferredColorScheme(preferredColorScheme)
         }
         .windowResizability(.contentSize)
         .defaultSize(width: 760, height: 520)
@@ -26,6 +32,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         BrowserManager.shared?.stopAllAndWait()
+    }
+}
+
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
     }
 }
 
@@ -819,95 +841,90 @@ struct SettingsView: View {
     @ObservedObject var l10n: Localization
     @Binding var showAdvancedDetails: Bool
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("AppAppearance") private var appAppearance: String = AppAppearance.system.rawValue
     @State private var showContact: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                Text(l10n.t("settings.title"))
-                    .font(.headline)
-                Spacer()
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-            }
+        VStack(spacing: 0) {
+            settingsHeader
 
-            GroupBox(l10n.t("settings.browser")) {
-                VStack(alignment: .leading, spacing: 10) {
-                    SettingsLine(label: l10n.t("settings.chrome_status"), value: manager.chromiumReady ? l10n.t("settings.ready") : l10n.t("settings.not_installed"))
-                    SettingsLine(label: l10n.t("settings.chrome_version"), value: manager.chromeVersionText ?? l10n.t("settings.unknown"))
-                    HStack {
-                        Button(l10n.t("settings.open_chrome_folder")) { manager.openChromiumFolder() }
-                        Button(l10n.t("settings.redownload_chrome")) { manager.reinstallChromium() }
-                            .disabled(!manager.runningProfiles.isEmpty || !manager.stoppingProfiles.isEmpty)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            GroupBox(l10n.t("settings.data")) {
-                VStack(alignment: .leading, spacing: 10) {
-                    SettingsLine(label: l10n.t("settings.data_path"), value: AppPaths.supportDir.path)
-                    HStack {
-                        Button(l10n.t("settings.open_data_folder")) { manager.openSupportFolder() }
-                        Button(l10n.t("settings.open_profiles_folder")) { manager.openProfilesFolder() }
-                        Button(l10n.t("settings.copy_path")) { manager.copySupportPath() }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            GroupBox(l10n.t("settings.preferences")) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text(l10n.t("language"))
-                        Spacer()
-                        LanguageMenu(l10n: l10n)
-                    }
-                    Toggle(l10n.t("settings.show_advanced"), isOn: $showAdvancedDetails)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            GroupBox(l10n.t("settings.help_updates")) {
-                VStack(alignment: .leading, spacing: 12) {
-                    SettingsLine(label: l10n.t("settings.app_version"), value: manager.currentVersion)
-
-                    HStack(spacing: 8) {
-                        Button {
-                            manager.checkForUpdates()
-                        } label: {
-                            Label(l10n.t("menu.check_updates"), systemImage: "arrow.down.circle")
-                        }
-
-                        Button {
-                            manager.openReleasesPage()
-                        } label: {
-                            Label(l10n.t("settings.view_releases"), systemImage: "arrow.up.right.square")
-                        }
-
-                        Button {
-                            showContact = true
-                        } label: {
-                            Label(l10n.t("settings.contact"), systemImage: "envelope")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    SettingsSection(title: l10n.t("settings.browser"), systemImage: "globe") {
+                        SettingsLine(label: l10n.t("settings.chrome_status"), value: manager.chromiumReady ? l10n.t("settings.ready") : l10n.t("settings.not_installed"))
+                        SettingsLine(label: l10n.t("settings.chrome_version"), value: manager.chromeVersionText ?? l10n.t("settings.unknown"))
+                        SettingsButtonRow {
+                            Button(l10n.t("settings.open_chrome_folder")) { manager.openChromiumFolder() }
+                            Button(l10n.t("settings.redownload_chrome")) { manager.reinstallChromium() }
+                                .disabled(!manager.runningProfiles.isEmpty || !manager.stoppingProfiles.isEmpty)
                         }
                     }
-                    .labelStyle(.titleAndIcon)
 
-                    Text(l10n.t("settings.help_hint"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    SettingsSection(title: l10n.t("settings.data"), systemImage: "folder") {
+                        SettingsLine(label: l10n.t("settings.data_path"), value: AppPaths.supportDir.path)
+                        SettingsButtonRow {
+                            Button(l10n.t("settings.open_data_folder")) { manager.openSupportFolder() }
+                            Button(l10n.t("settings.open_profiles_folder")) { manager.openProfilesFolder() }
+                            Button(l10n.t("settings.copy_path")) { manager.copySupportPath() }
+                        }
+                    }
+
+                    SettingsSection(title: l10n.t("settings.preferences"), systemImage: "slider.horizontal.3") {
+                        SettingsControlRow(label: l10n.t("language")) {
+                            LanguageMenu(l10n: l10n)
+                        }
+
+                        SettingsControlRow(label: l10n.t("settings.appearance")) {
+                            Picker("", selection: $appAppearance) {
+                                ForEach(AppAppearance.allCases) { appearance in
+                                    Text(appearanceTitle(appearance)).tag(appearance.rawValue)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 230)
+                        }
+
+                        Toggle(l10n.t("settings.show_advanced"), isOn: $showAdvancedDetails)
+                    }
+
+                    SettingsSection(title: l10n.t("settings.help_updates"), systemImage: "questionmark.circle") {
+                        SettingsLine(label: l10n.t("settings.app_version"), value: manager.currentVersion)
+                        SettingsButtonRow {
+                            Button {
+                                manager.checkForUpdates()
+                            } label: {
+                                Label(l10n.t("menu.check_updates"), systemImage: "arrow.down.circle")
+                            }
+
+                            Button {
+                                manager.openReleasesPage()
+                            } label: {
+                                Label(l10n.t("settings.view_releases"), systemImage: "arrow.up.right.square")
+                            }
+
+                            Button {
+                                showContact = true
+                            } label: {
+                                Label(l10n.t("settings.contact"), systemImage: "envelope")
+                            }
+                        }
+                        .labelStyle(.titleAndIcon)
+
+                        Text(l10n.t("settings.help_hint"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(l10n.t("settings.font_credit"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(22)
             }
         }
-        .padding(22)
-        .frame(width: 520)
+        .frame(width: 560, height: 560)
+        .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
         .alert(item: $manager.updateAlert) { alert in
             switch alert {
             case .upToDate:
@@ -942,6 +959,101 @@ struct SettingsView: View {
         } message: {
             Text(l10n.t("settings.contact_body"))
         }
+    }
+
+    private var settingsHeader: some View {
+        HStack {
+            Text(l10n.t("settings.title"))
+                .font(.system(size: 16, weight: .semibold))
+            Spacer()
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 15))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(l10n.t("common.close"))
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func appearanceTitle(_ appearance: AppAppearance) -> String {
+        switch appearance {
+        case .system: return l10n.t("settings.appearance_system")
+        case .light: return l10n.t("settings.appearance_light")
+        case .dark: return l10n.t("settings.appearance_dark")
+        }
+    }
+}
+
+struct SettingsSection<Content: View>: View {
+    let title: String
+    let systemImage: String
+    let content: Content
+
+    init(title: String, systemImage: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.systemImage = systemImage
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 10) {
+                content
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            }
+        }
+    }
+}
+
+struct SettingsControlRow<Content: View>: View {
+    let label: String
+    let content: Content
+
+    init(label: String, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .frame(width: 112, alignment: .leading)
+            Spacer(minLength: 12)
+            content
+        }
+        .font(.system(size: 12))
+    }
+}
+
+struct SettingsButtonRow<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            content
+        }
+        .controlSize(.small)
     }
 }
 
