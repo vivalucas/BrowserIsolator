@@ -18,12 +18,18 @@ BrowserIsolator 的定位很简单：做好本地浏览器环境隔离。它不�
 - **设置面板**：查看 Chrome 状态和版本、打开数据目录、复制路径、重新下载 Chrome、切换语言、高级详情显示，以及帮助与更新信息
 - **本地优先**：配置、浏览器和环境数据都保存在本机，不上传、不收集用户数据
 
+## 字体鸣谢
+
+应用图标中的字母使用 MiSans 字体绘制。MiSans 由小米提供，并声明全球免费商用。
+
 ## 系统要求
 
 - macOS 13 Ventura 或更高版本
 - Apple Silicon Mac（M1 及以上）
 
 当前发布包按 `arm64-apple-macosx13.0` 构建，不支持 Intel Mac。
+
+如果你需要 Windows 版本，可以参考另一个项目：[MoeMoeGit/ChromeIsolator](https://github.com/MoeMoeGit/ChromeIsolator)。
 
 ## 安装
 

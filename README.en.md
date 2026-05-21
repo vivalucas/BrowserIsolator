@@ -18,12 +18,18 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 - **Local-first**: configuration, browser files, and profile data stay on your Mac
 - **7 languages**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
+## Font Credit
+
+The letter in the app icon is drawn with MiSans. MiSans is provided by Xiaomi and is described as globally free for commercial use.
+
 ## Requirements
 
 - macOS 13 Ventura or later
 - Apple Silicon Mac (M1 or later)
 
 The current release is built for `arm64-apple-macosx13.0` and does not support Intel Macs.
+
+If you need a Windows version, see the related project: [MoeMoeGit/ChromeIsolator](https://github.com/MoeMoeGit/ChromeIsolator).
 
 ## Installation
 
