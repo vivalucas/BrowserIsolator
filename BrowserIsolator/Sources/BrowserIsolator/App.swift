@@ -992,22 +992,22 @@ struct SettingsView: View {
     }
 
     private var settingsCloseButton: some View {
-        ZStack {
-            Circle()
-                .fill(Color.red.opacity(0.9))
-                .frame(width: 13, height: 13)
-            Button {
-                dismiss()
-            } label: {
+        Button {
+            dismiss()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(Color.red.opacity(0.9))
+                    .frame(width: 13, height: 13)
                 Image(systemName: "xmark")
                     .font(.system(size: 7, weight: .bold))
                     .foregroundStyle(.black.opacity(0.58))
-                    .opacity(0.0)
-                    .frame(width: 13, height: 13)
             }
-            .buttonStyle(.plain)
-            .help(l10n.t("common.close"))
+            .frame(width: 22, height: 22)
+            .contentShape(Circle())
         }
+        .buttonStyle(.plain)
+        .help(l10n.t("common.close"))
     }
 
     private func appearanceTitle(_ appearance: AppAppearance) -> String {
