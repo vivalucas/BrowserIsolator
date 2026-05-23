@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ApplicationServices
 import Darwin
 
 // MARK: - 下载状态
@@ -49,6 +50,7 @@ class BrowserManager: ObservableObject {
     private var processes: [String: Process] = [:]
     private var fingerprintInjectors: [String: FingerprintInjector] = [:]
     private var debugPorts: [String: Int] = [:]
+    private var pendingExternalURLs: [String: [URL]] = [:]
 
     // Chrome 官方下载地址（Universal 版本，支持 Intel 和 Apple Silicon）
     private let chromeDownloadURL = "https://dl.google.com/chrome/mac/universal/stable/GGRO/googlechrome.dmg"
@@ -58,6 +60,7 @@ class BrowserManager: ObservableObject {
     private let issuesURL = "https://github.com/vivalucas/BrowserIsolator/issues"
     let contactEmail = "lucas6.zju@vip.163.com"
     private let latestReleaseAPI = "https://api.github.com/repos/vivalucas/BrowserIsolator/releases/latest"
+    private static let defaultOpenProfileFolderKey = "DefaultOpenProfileFolder"
 
     @Published var profileSizes: [String: Int64] = [:]
     @Published var profileLastUsed: [String: Date] = [:]
@@ -122,12 +125,27 @@ class BrowserManager: ObservableObject {
 
     // MARK: - 启动 / 关闭
 
-    func startProfile(_ profile: Profile) {
+    func startProfile(_ profile: Profile, urls: [URL] = []) {
         guard chromiumReady,
-              !runningProfiles.contains(profile.folder),
+              !startingProfiles.contains(profile.folder),
               !stoppingProfiles.contains(profile.folder) else { return }
-        let profileDir = AppPaths.profilesDir.appendingPathComponent(profile.folder).path
-
+        if runningProfiles.contains(profile.folder) {
+            if !urls.isEmpty {
+                do {
+                    let process = launchProfileProcess(profile, additionalArguments: urls.map(\.absoluteString))
+                    try process.run()
+                } catch {
+                    print("[BrowserIsolator] 向已运行环境 \(profile.folder) 打开链接失败: \(error)")
+                }
+            }
+            return
+        }
+        if startingProfiles.contains(profile.folder) {
+            if !urls.isEmpty {
+                pendingExternalURLs[profile.folder, default: []].append(contentsOf: urls)
+            }
+            return
+        }
         startingProfiles.insert(profile.folder)
 
         do {
@@ -135,14 +153,11 @@ class BrowserManager: ObservableObject {
             try validateChromiumExecutable()
             let debugPort = try findAvailablePort(preferred: 40000 + profile.instanceNumber)
 
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: chromiumExePath)
-            process.arguments = [
-                "--user-data-dir=\(profileDir)",
-                "--no-first-run",
-                "--test-type",
-                "--remote-debugging-port=\(debugPort)"
-            ]
+            let process = launchProfileProcess(
+                profile,
+                debugPort: debugPort,
+                additionalArguments: urls.map(\.absoluteString)
+            )
             process.terminationHandler = { [weak self, folder = profile.folder] _ in
                 Task { @MainActor in
                     self?.handleProcessTerminated(folder)
@@ -160,16 +175,42 @@ class BrowserManager: ObservableObject {
             Task { await injector.startInjection() }
 
             // 启动成功，延迟移除 starting 状态，让用户能看到反馈
-            Task {
+            Task { [weak self, profile] in
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
-                startingProfiles.remove(profile.folder)
+                self?.startingProfiles.remove(profile.folder)
+                if let queuedURLs = self?.pendingExternalURLs.removeValue(forKey: profile.folder),
+                   !queuedURLs.isEmpty {
+                    self?.startProfile(profile, urls: queuedURLs)
+                }
             }
         } catch {
             startingProfiles.remove(profile.folder)
             debugPorts.removeValue(forKey: profile.folder)
+            pendingExternalURLs.removeValue(forKey: profile.folder)
             profileErrors[profile.folder] = error.localizedDescription
             print("[BrowserIsolator] 启动环境 \(profile.folder) 失败: \(error)")
         }
+    }
+
+    private func launchProfileProcess(
+        _ profile: Profile,
+        debugPort: Int? = nil,
+        additionalArguments: [String] = []
+    ) -> Process {
+        let profileDir = AppPaths.profilesDir.appendingPathComponent(profile.folder).path
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: chromiumExePath)
+        var arguments = [
+            "--user-data-dir=\(profileDir)",
+            "--no-first-run",
+            "--test-type"
+        ]
+        if let debugPort {
+            arguments.append("--remote-debugging-port=\(debugPort)")
+        }
+        arguments.append(contentsOf: additionalArguments)
+        process.arguments = arguments
+        return process
     }
 
     /// 从首选端口开始查找可用端口，最多尝试 10 个
@@ -201,6 +242,7 @@ class BrowserManager: ObservableObject {
 
     func stopProfile(_ profile: Profile) {
         startingProfiles.remove(profile.folder)
+        pendingExternalURLs.removeValue(forKey: profile.folder)
         if let injector = fingerprintInjectors.removeValue(forKey: profile.folder) {
             Task { await injector.disconnect() }
         }
@@ -222,6 +264,7 @@ class BrowserManager: ObservableObject {
 
     func stopAll() {
         startingProfiles.removeAll()
+        pendingExternalURLs.removeAll()
         for (_, injector) in fingerprintInjectors { Task { await injector.disconnect() } }
         fingerprintInjectors.removeAll()
         debugPorts.removeAll()
@@ -256,6 +299,7 @@ class BrowserManager: ObservableObject {
 
     /// 发送 SIGTERM 并等待所有进程真正退出（用于 app 退出时调用）
     func stopAllAndWait() {
+        pendingExternalURLs.removeAll()
         for (_, injector) in fingerprintInjectors { Task { await injector.disconnect() } }
         fingerprintInjectors.removeAll()
         debugPorts.removeAll()
@@ -323,6 +367,7 @@ class BrowserManager: ObservableObject {
     }
 
     private func handleProcessTerminated(_ folder: String) {
+        pendingExternalURLs.removeValue(forKey: folder)
         if let injector = fingerprintInjectors.removeValue(forKey: folder) {
             Task { await injector.disconnect() }
         }
@@ -353,6 +398,7 @@ class BrowserManager: ObservableObject {
     func moveProfileToTrash(_ profile: Profile) {
         guard !runningProfiles.contains(profile.folder),
               !stoppingProfiles.contains(profile.folder) else { return }
+        pendingExternalURLs.removeValue(forKey: profile.folder)
         let dir = AppPaths.profilesDir.appendingPathComponent(profile.folder)
         do {
             if FileManager.default.fileExists(atPath: dir.path) {
@@ -376,6 +422,24 @@ class BrowserManager: ObservableObject {
         guard let idx = config.profiles.firstIndex(where: { $0.folder == profile.folder }) else { return }
         config.profiles[idx].displayName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         configStore.save(config)
+    }
+
+    func updateNote(for profile: Profile, newNote: String) {
+        guard let idx = config.profiles.firstIndex(where: { $0.folder == profile.folder }) else { return }
+        config.profiles[idx].note = newNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        configStore.save(config)
+    }
+
+    func defaultOpenProfile() -> Profile? {
+        let storedFolder = UserDefaults.standard.string(forKey: Self.defaultOpenProfileFolderKey) ?? ""
+        if let profile = config.profiles.first(where: { $0.folder == storedFolder }) {
+            return profile
+        }
+        return config.profiles.first
+    }
+
+    func setDefaultOpenProfileFolder(_ folder: String) {
+        UserDefaults.standard.set(folder, forKey: Self.defaultOpenProfileFolderKey)
     }
 
     func clearProfileError(_ profile: Profile) {
@@ -423,6 +487,30 @@ class BrowserManager: ObservableObject {
     func openIssuesPage() {
         if let url = URL(string: issuesURL) {
             NSWorkspace.shared.open(url)
+        }
+    }
+
+    func openExternalURLs(_ urls: [URL]) {
+        let validURLs = urls.filter { ["http", "https"].contains($0.scheme?.lowercased() ?? "") }
+        guard !validURLs.isEmpty else { return }
+        guard let profile = defaultOpenProfile() else {
+            print("[BrowserIsolator] 外部链接到达，但没有可用环境")
+            return
+        }
+        if startingProfiles.contains(profile.folder) {
+            pendingExternalURLs[profile.folder, default: []].append(contentsOf: validURLs)
+            return
+        }
+        startProfile(profile, urls: validURLs)
+    }
+
+    func setAsDefaultBrowser() {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        for scheme in ["http", "https"] {
+            let status = LSSetDefaultHandlerForURLScheme(scheme as CFString, bundleID as CFString)
+            if status != noErr {
+                print("[BrowserIsolator] 设置默认浏览器失败: scheme=\(scheme), status=\(status)")
+            }
         }
     }
 

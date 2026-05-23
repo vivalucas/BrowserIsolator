@@ -28,7 +28,32 @@ struct BrowserIsolatorApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {}
+    private var pendingOpenURLs: [URL] = []
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in
+            self.flushPendingOpenURLs()
+        }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        Task { @MainActor in
+            if let manager = BrowserManager.shared {
+                manager.openExternalURLs(urls)
+            } else {
+                pendingOpenURLs.append(contentsOf: urls)
+            }
+        }
+    }
+
+    @MainActor
+    private func flushPendingOpenURLs() {
+        guard !pendingOpenURLs.isEmpty,
+              let manager = BrowserManager.shared else { return }
+        manager.openExternalURLs(pendingOpenURLs)
+        pendingOpenURLs.removeAll()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         BrowserManager.shared?.stopAllAndWait()
@@ -59,6 +84,9 @@ struct MainView: View {
     @State private var showRenameSheet: Bool = false
     @State private var renameTarget: Profile?
     @State private var renameText: String = ""
+    @State private var showNoteSheet: Bool = false
+    @State private var noteTarget: Profile?
+    @State private var noteText: String = ""
     @State private var showDeleteConfirm: Profile?
     @State private var deleteConfirmText: String = ""
     @State private var selectedProfileID: String?
@@ -143,6 +171,15 @@ struct MainView: View {
                                 showRenameSheet = true
                             }
                             if !manager.runningProfiles.contains(profile.folder),
+                               !manager.startingProfiles.contains(profile.folder),
+                               !manager.stoppingProfiles.contains(profile.folder) {
+                                Button(l10n.t("context.note")) {
+                                    noteTarget = profile
+                                    noteText = profile.note
+                                    showNoteSheet = true
+                                }
+                            }
+                            if !manager.runningProfiles.contains(profile.folder),
                                !manager.stoppingProfiles.contains(profile.folder) {
                                 Divider()
                                 Button(l10n.t("context.delete"), role: .destructive) {
@@ -168,6 +205,11 @@ struct MainView: View {
                     renameTarget = profile
                     renameText = profile.displayName
                     showRenameSheet = true
+                },
+                onNote: { profile in
+                    noteTarget = profile
+                    noteText = profile.note
+                    showNoteSheet = true
                 },
                 onDelete: { profile in
                     showDeleteConfirm = profile
@@ -223,6 +265,27 @@ struct MainView: View {
                 renameTarget = nil
                 showRenameSheet = false
             }
+        }
+        .sheet(isPresented: $showNoteSheet) {
+            ProfileTextSheet(
+                title: l10n.t("context.note"),
+                hint: l10n.t("note.hint"),
+                placeholder: l10n.t("note.placeholder"),
+                maxLength: 120,
+                text: $noteText,
+                l10n: l10n,
+                onConfirm: {
+                    if let target = noteTarget {
+                        manager.updateNote(for: target, newNote: noteText)
+                    }
+                    noteTarget = nil
+                    showNoteSheet = false
+                },
+                onCancel: {
+                    noteTarget = nil
+                    showNoteSheet = false
+                }
+            )
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(
@@ -436,6 +499,7 @@ struct ProfileInspectorView: View {
     @ObservedObject var l10n: Localization
     let showAdvancedDetails: Bool
     let onRename: (Profile) -> Void
+    let onNote: (Profile) -> Void
     let onDelete: (Profile) -> Void
 
     var body: some View {
@@ -480,6 +544,15 @@ struct ProfileInspectorView: View {
                     HStack(spacing: 8) {
                         primaryAction(for: profile)
                         Button(l10n.t("context.rename")) { onRename(profile) }
+                        Button(l10n.t("context.note")) { onNote(profile) }
+                    }
+
+                    if !profile.note.isEmpty {
+                        Text(profile.note)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
 
@@ -739,6 +812,54 @@ struct RenameSheet: View {
     }
 }
 
+struct ProfileTextSheet: View {
+    let title: String
+    let hint: String
+    let placeholder: String
+    let maxLength: Int?
+    @Binding var text: String
+    @ObservedObject var l10n: Localization
+    @FocusState private var isFocused: Bool
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text(title).font(.headline)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(hint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField(placeholder, text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 260)
+                    .focused($isFocused)
+                    .onChange(of: text) { newValue in
+                        guard let maxLength, newValue.count > maxLength else { return }
+                        text = String(newValue.prefix(maxLength))
+                    }
+            }
+
+            HStack(spacing: 12) {
+                Button(l10n.t("common.cancel"), action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button(l10n.t("common.confirm"), action: onConfirm)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(28)
+        .frame(width: 320)
+        .onAppear {
+            isFocused = true
+            if let maxLength, text.count > maxLength {
+                text = String(text.prefix(maxLength))
+            }
+        }
+    }
+}
+
 // MARK: - 菜单栏视图
 
 struct MenuBarView: View {
@@ -842,7 +963,7 @@ struct SettingsView: View {
     @Binding var showAdvancedDetails: Bool
     @Environment(\.dismiss) private var dismiss
     @AppStorage("AppAppearance") private var appAppearance: String = AppAppearance.system.rawValue
-    @State private var showContact: Bool = false
+    @AppStorage("DefaultOpenProfileFolder") private var defaultOpenProfileFolder: String = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -872,6 +993,38 @@ struct SettingsView: View {
                         }
                     }
 
+                    SettingsSection(title: l10n.t("settings.external_links"), systemImage: "link") {
+                        SettingsControlRow(label: l10n.t("settings.default_open_to")) {
+                            if manager.config.profiles.isEmpty {
+                                Text(l10n.t("settings.unknown"))
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Picker("", selection: $defaultOpenProfileFolder) {
+                                    ForEach(manager.config.profiles) { profile in
+                                        Text(profileTitle(profile, l10n: l10n)).tag(profile.folder)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 230, alignment: .leading)
+                            }
+                        }
+                        SettingsDivider()
+                        SettingsButtonRow {
+                            Button {
+                                manager.setAsDefaultBrowser()
+                            } label: {
+                                Label(l10n.t("settings.set_default_browser"), systemImage: "safari")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(manager.config.profiles.isEmpty)
+                        }
+                        Text(l10n.t("settings.default_open_hint"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 4)
+                    }
+
                     SettingsSection(title: l10n.t("settings.preferences"), systemImage: "slider.horizontal.3") {
                         SettingsControlRow(label: l10n.t("language")) {
                             LanguageMenu(l10n: l10n)
@@ -893,6 +1046,9 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: l10n.t("settings.help_updates"), systemImage: "questionmark.circle") {
+                        Text(l10n.t("settings.version_group"))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
                         SettingsLine(label: l10n.t("settings.app_version"), value: manager.currentVersion)
                         SettingsDivider()
                         SettingsButtonRow {
@@ -907,14 +1063,37 @@ struct SettingsView: View {
                             } label: {
                                 Label(l10n.t("settings.view_releases"), systemImage: "arrow.up.right.square")
                             }
-
-                            Button {
-                                showContact = true
-                            } label: {
-                                Label(l10n.t("settings.contact"), systemImage: "envelope")
-                            }
                         }
                         .labelStyle(.titleAndIcon)
+                        SettingsDivider()
+
+                        Text(l10n.t("settings.author_group"))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        SettingsLine(label: l10n.t("settings.author"), value: "Lucas")
+                        SettingsDivider()
+                        SettingsLine(label: l10n.t("settings.email"), value: manager.contactEmail)
+                        SettingsButtonRow {
+                            Button {
+                                manager.copyContactEmail()
+                            } label: {
+                                Label(l10n.t("settings.copy_email"), systemImage: "doc.on.doc")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        SettingsDivider()
+
+                        Text(l10n.t("settings.feedback_group"))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        SettingsButtonRow {
+                            Button {
+                                manager.openIssuesPage()
+                            } label: {
+                                Label(l10n.t("settings.open_issues"), systemImage: "bubble.left.and.bubble.right")
+                            }
+                            .buttonStyle(.bordered)
+                        }
                         SettingsDivider()
 
                         Text(l10n.t("settings.help_hint"))
@@ -922,19 +1101,13 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-
-                    Text(l10n.t("settings.font_credit"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 2)
                 }
                 .padding(.horizontal, 26)
                 .padding(.vertical, 22)
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .frame(width: 580, height: 560)
+        .frame(width: 620, height: 690)
         .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
         .alert(item: $manager.updateAlert) { alert in
             switch alert {
@@ -959,17 +1132,23 @@ struct SettingsView: View {
                 )
             }
         }
-        .alert(l10n.t("settings.contact_title"), isPresented: $showContact) {
-            Button(l10n.t("settings.open_issues")) {
-                manager.openIssuesPage()
-            }
-            Button(l10n.t("settings.copy_email")) {
-                manager.copyContactEmail()
-            }
-            Button(l10n.t("common.confirm"), role: .cancel) {}
-        } message: {
-            Text(l10n.t("settings.contact_body"))
+        .onAppear(perform: normalizeDefaultOpenProfileFolder)
+        .onChange(of: manager.config.profiles.map(\.folder)) { _ in
+            normalizeDefaultOpenProfileFolder()
         }
+    }
+
+    private func normalizeDefaultOpenProfileFolder() {
+        guard !manager.config.profiles.isEmpty else {
+            if !defaultOpenProfileFolder.isEmpty {
+                defaultOpenProfileFolder = ""
+            }
+            return
+        }
+        if manager.config.profiles.contains(where: { $0.folder == defaultOpenProfileFolder }) {
+            return
+        }
+        defaultOpenProfileFolder = manager.config.profiles.first?.folder ?? ""
     }
 
     private var settingsHeader: some View {
