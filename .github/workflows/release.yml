@@ -22,7 +22,10 @@ jobs:
         run: |
           mkdir -p BrowserIsolator.app/Contents/MacOS
           mkdir -p BrowserIsolator.app/Contents/Resources
+          mkdir -p BrowserIsolator.app/Contents/Frameworks
           cp BrowserIsolator/.build/release/BrowserIsolator BrowserIsolator.app/Contents/MacOS/
+          cp -R BrowserIsolator/.build/arm64-apple-macosx/release/Sparkle.framework BrowserIsolator.app/Contents/Frameworks/
+          install_name_tool -add_rpath "@loader_path/../Frameworks" BrowserIsolator.app/Contents/MacOS/BrowserIsolator
           cp Info.plist BrowserIsolator.app/Contents/
           cp AppIcon.icns BrowserIsolator.app/Contents/Resources/
           cp -R BrowserIsolator/Resources/*.lproj BrowserIsolator.app/Contents/Resources/
@@ -41,8 +44,28 @@ jobs:
             "BrowserIsolator.dmg" \
             "BrowserIsolator.app"
 
+      - name: Generate Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "SPARKLE_PRIVATE_KEY GitHub secret is required to generate appcast.xml"
+            exit 1
+          fi
+
+          mkdir -p sparkle-release
+          cp BrowserIsolator.dmg sparkle-release/
+          echo "$SPARKLE_PRIVATE_KEY" | \
+            BrowserIsolator/.build/artifacts/sparkle/Sparkle/bin/generate_appcast \
+              --ed-key-file - \
+              --download-url-prefix "https://github.com/vivalucas/BrowserIsolator/releases/download/${{ github.ref_name }}/" \
+              -o sparkle-release/appcast.xml \
+              sparkle-release
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: BrowserIsolator.dmg
+          files: |
+            sparkle-release/BrowserIsolator.dmg
+            sparkle-release/appcast.xml
           generate_release_notes: true

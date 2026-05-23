@@ -1,10 +1,12 @@
 import SwiftUI
+import Sparkle
 
 @main
 struct BrowserIsolatorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var manager = BrowserManager()
     @StateObject private var localization = Localization()
+    @StateObject private var updater = SparkleUpdater()
     @AppStorage("AppAppearance") private var appAppearance: String = AppAppearance.system.rawValue
 
     private var preferredColorScheme: ColorScheme? {
@@ -13,7 +15,7 @@ struct BrowserIsolatorApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MainView(manager: manager, l10n: localization)
+            MainView(manager: manager, l10n: localization, updater: updater)
                 .frame(minWidth: 680, idealWidth: 760, minHeight: 420)
                 .preferredColorScheme(preferredColorScheme)
         }
@@ -21,19 +23,31 @@ struct BrowserIsolatorApp: App {
         .defaultSize(width: 760, height: 520)
 
         MenuBarExtra("", systemImage: manager.runningProfiles.isEmpty ? "macwindow.on.rectangle" : "macwindow.badge.plus") {
-            MenuBarView(manager: manager, l10n: localization)
+            MenuBarView(manager: manager, l10n: localization, updater: updater)
         }
         .menuBarExtraStyle(.menu)
     }
 }
 
+@MainActor
+final class SparkleUpdater: NSObject, ObservableObject {
+    private let controller = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
+
+    func checkForUpdates() {
+        controller.checkForUpdates(nil)
+    }
+}
+
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingOpenURLs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Task { @MainActor in
-            self.flushPendingOpenURLs()
-        }
+        schedulePendingOpenURLFlush(attemptsRemaining: 20)
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -42,6 +56,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 manager.openExternalURLs(urls)
             } else {
                 pendingOpenURLs.append(contentsOf: urls)
+                schedulePendingOpenURLFlush(attemptsRemaining: 20)
             }
         }
     }
@@ -52,6 +67,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
               let manager = BrowserManager.shared else { return }
         manager.openExternalURLs(pendingOpenURLs)
         pendingOpenURLs.removeAll()
+    }
+
+    private func schedulePendingOpenURLFlush(attemptsRemaining: Int) {
+        Task { @MainActor in
+            if BrowserManager.shared != nil {
+                self.flushPendingOpenURLs()
+                return
+            }
+
+            guard attemptsRemaining > 0 else { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            self.schedulePendingOpenURLFlush(attemptsRemaining: attemptsRemaining - 1)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -81,6 +109,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 struct MainView: View {
     @ObservedObject var manager: BrowserManager
     @ObservedObject var l10n: Localization
+    @ObservedObject var updater: SparkleUpdater
     @State private var showRenameSheet: Bool = false
     @State private var renameTarget: Profile?
     @State private var renameText: String = ""
@@ -291,6 +320,7 @@ struct MainView: View {
             SettingsView(
                 manager: manager,
                 l10n: l10n,
+                updater: updater,
                 showAdvancedDetails: $showAdvancedDetails
             )
         }
@@ -865,6 +895,7 @@ struct ProfileTextSheet: View {
 struct MenuBarView: View {
     @ObservedObject var manager: BrowserManager
     @ObservedObject var l10n: Localization
+    @ObservedObject var updater: SparkleUpdater
 
     private var runningProfiles: [Profile] {
         manager.config.profiles.filter { manager.runningProfiles.contains($0.folder) }
@@ -911,7 +942,7 @@ struct MenuBarView: View {
             Divider()
             LanguageMenu(l10n: l10n)
             Divider()
-            Button(l10n.t("menu.check_updates")) { manager.checkForUpdates() }
+            Button(l10n.t("menu.check_updates")) { updater.checkForUpdates() }
             Button(l10n.t("menu.quit")) {
                 if manager.runningProfiles.isEmpty {
                     NSApp.terminate(nil)
@@ -960,6 +991,7 @@ struct MenuBarView: View {
 struct SettingsView: View {
     @ObservedObject var manager: BrowserManager
     @ObservedObject var l10n: Localization
+    @ObservedObject var updater: SparkleUpdater
     @Binding var showAdvancedDetails: Bool
     @Environment(\.dismiss) private var dismiss
     @AppStorage("AppAppearance") private var appAppearance: String = AppAppearance.system.rawValue
@@ -1053,7 +1085,7 @@ struct SettingsView: View {
                         SettingsDivider()
                         SettingsButtonRow {
                             Button {
-                                manager.checkForUpdates()
+                                updater.checkForUpdates()
                             } label: {
                                 Label(l10n.t("menu.check_updates"), systemImage: "arrow.down.circle")
                             }

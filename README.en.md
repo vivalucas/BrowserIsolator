@@ -14,7 +14,7 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 - **Custom names**: name a new environment immediately after creating it, or rename it later from the context menu
 - **Fingerprint variation**: injects different `navigator.hardwareConcurrency` and `navigator.deviceMemory` values per environment, including newly opened tabs
 - **Automatic browser setup**: downloads official Google Chrome on first launch into the app's own data directory
-- **Settings panel**: view Chrome status, data folders, language, appearance mode, advanced-detail display options, and Help & Updates
+- **Settings panel**: view Chrome status, data folders, language, appearance mode, advanced-detail display options, version updates, author contact, and feedback links
 - **Local-first**: configuration, browser files, and profile data stay on your Mac
 - **7 languages**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
@@ -40,6 +40,8 @@ If you need a Windows version, see the related project: [MoeMoeGit/ChromeIsolato
    ```
 
    Then open the app again. You can also right-click the app in Finder, choose Open, and confirm in the dialog.
+
+Future app updates can be checked from **Settings -> Help & Updates -> Check for Updates**. BrowserIsolator uses Sparkle to fetch updates from GitHub Releases; the first install still starts from the Releases DMG.
 
 ### Option 2: Build from source
 
@@ -115,7 +117,7 @@ Then reopen BrowserIsolator.
 - **Rename**: right-click an environment and choose Rename
 - **Details**: select an environment and use the right-side inspector to view the profile path, debugging port, errors, actions, and advanced details
 - **Delete**: right-click a stopped environment and choose Delete; type the environment name to confirm, then its data is moved to Trash
-- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, change language or appearance mode, check for updates, open Releases, or view contact details
+- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, change language or appearance mode, check for updates, open the release page, view author contact, or submit feedback
 - **Language**: use the globe menu in the toolbar or the menu bar menu
 - **Menu bar**: start, close, change language, check updates, or open the main panel
 
@@ -171,10 +173,10 @@ No. To update Chrome manually, delete:
 
 The next launch downloads Chrome again.
 
+### Does BrowserIsolator update automatically?
+
+It supports in-app update checks. Use Check for Updates from the menu bar or **Settings -> Help & Updates**. BrowserIsolator uses Sparkle to check GitHub Releases for new app versions. Homebrew distribution is intentionally deferred for now to avoid mixing multiple update owners for the same installed app.
+
 ### How many environments can run at once?
 
 There is no hard limit. Running no more than five at once is recommended, depending on memory, CPU, and the pages open in each environment.
-
-## Notes
-
-The letter in the app icon is drawn with MiSans.
