@@ -29,6 +29,7 @@ jobs:
           cp Info.plist BrowserIsolator.app/Contents/
           cp AppIcon.icns BrowserIsolator.app/Contents/Resources/
           cp -R BrowserIsolator/Resources/*.lproj BrowserIsolator.app/Contents/Resources/
+          codesign --force --deep --sign - BrowserIsolator.app
 
       - name: Create DMG
         run: |

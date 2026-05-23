@@ -18,5 +18,6 @@ install_name_tool -add_rpath "@loader_path/../Frameworks" BrowserIsolator.app/Co
 cp Info.plist BrowserIsolator.app/Contents/
 cp AppIcon.icns BrowserIsolator.app/Contents/Resources/
 cp -R BrowserIsolator/Resources/*.lproj BrowserIsolator.app/Contents/Resources/
+codesign --force --deep --sign - BrowserIsolator.app
 
 echo "Done. Run: open BrowserIsolator.app"
