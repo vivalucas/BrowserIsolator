@@ -143,7 +143,7 @@ struct MainView: View {
     @ViewBuilder
     private var profileList: some View {
         HSplitView {
-            List {
+            List(selection: $selectedProfileID) {
                 if sortedProfiles.isEmpty {
                     VStack(spacing: 16) {
                         Spacer()
@@ -182,17 +182,14 @@ struct MainView: View {
                         )
                         .tag(profile.folder)
                         .contentShape(Rectangle())
-                        .simultaneousGesture(TapGesture().onEnded {
-                            selectedProfileID = profile.folder
-                        })
-                        .highPriorityGesture(TapGesture(count: 2).onEnded {
+                        .onTapGesture(count: 2) {
                             selectedProfileID = profile.folder
                             if !manager.runningProfiles.contains(profile.folder),
                                !manager.startingProfiles.contains(profile.folder),
                                !manager.stoppingProfiles.contains(profile.folder) {
                                 manager.startProfile(profile)
                             }
-                        })
+                        }
                         .contextMenu {
                             Button(l10n.t("context.rename")) {
                                 renameTarget = profile
@@ -262,6 +259,8 @@ struct MainView: View {
                     Label(l10n.t("toolbar.add"), systemImage: "plus")
                         .labelStyle(.titleAndIcon)
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(.teal)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -271,6 +270,7 @@ struct MainView: View {
                     Label(l10n.t("settings.title"), systemImage: "gearshape")
                         .labelStyle(.titleAndIcon)
                 }
+                .buttonStyle(.bordered)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -280,7 +280,9 @@ struct MainView: View {
                     Label(l10n.t("toolbar.stop_all"), systemImage: "stop.fill")
                         .labelStyle(.titleAndIcon)
                 }
-                .disabled(manager.runningProfiles.isEmpty)
+                .disabled(manager.runningProfiles.isEmpty && manager.stoppingProfiles.isEmpty)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
             }
         }
         .sheet(isPresented: $showRenameSheet) {
@@ -356,6 +358,7 @@ struct MainView: View {
                 ))
             }
         }
+        .externalLinkAlert(manager: manager, l10n: l10n)
     }
 
     private var selectedProfile: Profile? {
@@ -917,7 +920,6 @@ struct MenuBarView: View {
                         Label(profileTitle(profile, l10n: l10n), systemImage: "stop.fill")
                     }
                 }
-                Button(l10n.t("toolbar.stop_all")) { manager.stopAll() }
                 Button(l10n.t("menu.close_all_quit")) {
                     manager.stopAllThenQuit()
                 }
@@ -931,6 +933,10 @@ struct MenuBarView: View {
                     Label(profileTitle(profile, l10n: l10n), systemImage: "play.fill")
                 }
             }
+
+            Divider()
+            Button(l10n.t("toolbar.stop_all")) { manager.stopAll() }
+                .disabled(manager.runningProfiles.isEmpty && manager.stoppingProfiles.isEmpty)
 
             Divider()
             Button(l10n.t("menu.open_panel")) {
@@ -983,6 +989,25 @@ struct MenuBarView: View {
         } message: {
             Text(l10n.format("quit.message", manager.runningProfiles.count))
         }
+        .externalLinkAlert(manager: manager, l10n: l10n)
+    }
+}
+
+private extension View {
+    func externalLinkAlert(manager: BrowserManager, l10n: Localization) -> some View {
+        alert(item: Binding(
+            get: { manager.externalLinkAlert },
+            set: { manager.externalLinkAlert = $0 }
+        )) { alert in
+            Alert(
+                title: Text(l10n.t("external_link.title")),
+                message: Text(l10n.format("external_link.message", alert.url.absoluteString)),
+                primaryButton: .default(Text(l10n.t("external_link.copy"))) {
+                    manager.copyExternalLink(alert.url)
+                },
+                secondaryButton: .cancel(Text(l10n.t("common.confirm")))
+            )
+        }
     }
 }
 
@@ -1026,7 +1051,7 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: l10n.t("settings.external_links"), systemImage: "link") {
-                        SettingsControlRow(label: l10n.t("settings.default_open_to")) {
+                        SettingsControlRow(label: l10n.t("settings.open_to")) {
                             if manager.config.profiles.isEmpty {
                                 Text(l10n.t("settings.unknown"))
                                     .foregroundStyle(.secondary)
@@ -1047,14 +1072,9 @@ struct SettingsView: View {
                             } label: {
                                 Label(l10n.t("settings.set_default_browser"), systemImage: "safari")
                             }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(manager.config.profiles.isEmpty)
+                                .buttonStyle(.borderedProminent)
+                                .disabled(manager.config.profiles.isEmpty)
                         }
-                        Text(l10n.t("settings.default_open_hint"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 4)
                     }
 
                     SettingsSection(title: l10n.t("settings.preferences"), systemImage: "slider.horizontal.3") {
@@ -1077,7 +1097,7 @@ struct SettingsView: View {
                         SettingsToggleRow(label: l10n.t("settings.show_advanced"), isOn: $showAdvancedDetails)
                     }
 
-                    SettingsSection(title: l10n.t("settings.help_updates"), systemImage: "questionmark.circle") {
+                    SettingsSection(title: l10n.t("settings.about_support"), systemImage: "questionmark.circle") {
                         Text(l10n.t("settings.version_group"))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
@@ -1127,11 +1147,6 @@ struct SettingsView: View {
                             .buttonStyle(.bordered)
                         }
                         SettingsDivider()
-
-                        Text(l10n.t("settings.help_hint"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(.horizontal, 26)
@@ -1246,22 +1261,33 @@ struct SettingsSection<Content: View>: View {
             Label {
                 Text(title)
             } icon: {
-                Image(systemName: systemImage)
-                    .frame(width: 16)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.12))
+                        .frame(width: 22, height: 22)
+                    Image(systemName: systemImage)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .frame(width: 22, height: 22)
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.secondary)
             .frame(width: 118, alignment: .leading)
-            .padding(.top, 11)
+            .padding(.top, 10)
 
             VStack(alignment: .leading, spacing: 0) {
                 content
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 2)
+            .padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.58))
-            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.46))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+            }
         }
     }
 }

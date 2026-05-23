@@ -68,6 +68,7 @@ class BrowserManager: ObservableObject {
 
     @Published var updateAlert: UpdateAlert?
     @Published var showQuitConfirm: Bool = false
+    @Published var externalLinkAlert: ExternalLinkAlert?
 
     enum UpdateAlert: Identifiable {
         case upToDate
@@ -81,6 +82,11 @@ class BrowserManager: ObservableObject {
             case .checkFailed: return "checkFailed"
             }
         }
+    }
+
+    struct ExternalLinkAlert: Identifiable {
+        let id = UUID()
+        let url: URL
     }
 
     var chromiumExePath: String {
@@ -438,10 +444,6 @@ class BrowserManager: ObservableObject {
         return config.profiles.first
     }
 
-    func setDefaultOpenProfileFolder(_ folder: String) {
-        UserDefaults.standard.set(folder, forKey: Self.defaultOpenProfileFolderKey)
-    }
-
     func clearProfileError(_ profile: Profile) {
         profileErrors.removeValue(forKey: profile.folder)
     }
@@ -493,6 +495,10 @@ class BrowserManager: ObservableObject {
     func openExternalURLs(_ urls: [URL]) {
         let validURLs = urls.filter { ["http", "https"].contains($0.scheme?.lowercased() ?? "") }
         guard !validURLs.isEmpty else { return }
+        guard chromiumReady else {
+            externalLinkAlert = ExternalLinkAlert(url: validURLs[0])
+            return
+        }
         guard let profile = defaultOpenProfile() else {
             print("[BrowserIsolator] 外部链接到达，但没有可用环境")
             return
@@ -517,6 +523,11 @@ class BrowserManager: ObservableObject {
     func copyContactEmail() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(contactEmail, forType: .string)
+    }
+
+    func copyExternalLink(_ url: URL) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
     }
 
     // MARK: - 下载浏览器
