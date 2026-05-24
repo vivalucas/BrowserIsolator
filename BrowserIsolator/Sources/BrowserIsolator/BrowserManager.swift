@@ -133,8 +133,15 @@ class BrowserManager: ObservableObject {
 
     func startProfile(_ profile: Profile, urls: [URL] = []) {
         guard chromiumReady,
-              !startingProfiles.contains(profile.folder),
               !stoppingProfiles.contains(profile.folder) else { return }
+
+        if startingProfiles.contains(profile.folder) {
+            if !urls.isEmpty {
+                pendingExternalURLs[profile.folder, default: []].append(contentsOf: urls)
+            }
+            return
+        }
+
         if runningProfiles.contains(profile.folder) {
             if !urls.isEmpty {
                 do {
@@ -146,12 +153,7 @@ class BrowserManager: ObservableObject {
             }
             return
         }
-        if startingProfiles.contains(profile.folder) {
-            if !urls.isEmpty {
-                pendingExternalURLs[profile.folder, default: []].append(contentsOf: urls)
-            }
-            return
-        }
+
         startingProfiles.insert(profile.folder)
 
         do {

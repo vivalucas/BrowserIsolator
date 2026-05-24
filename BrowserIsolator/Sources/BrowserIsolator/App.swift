@@ -30,16 +30,66 @@ struct BrowserIsolatorApp: App {
 }
 
 @MainActor
-final class SparkleUpdater: NSObject, ObservableObject {
-    private let controller = SPUStandardUpdaterController(
+final class SparkleUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
+    private lazy var controller = SPUStandardUpdaterController(
         startingUpdater: true,
-        updaterDelegate: nil,
+        updaterDelegate: self,
         userDriverDelegate: nil
     )
+
+    override init() {
+        super.init()
+        _ = controller
+    }
 
     func checkForUpdates() {
         controller.checkForUpdates(nil)
     }
+
+    func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
+        closeHostWindowsForUpdateRelaunch()
+    }
+
+    func updater(
+        _ updater: SPUUpdater,
+        shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+        untilInvokingBlock installHandler: @escaping () -> Void
+    ) -> Bool {
+        closeHostWindowsForUpdateRelaunch()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            installHandler()
+        }
+        return true
+    }
+
+    func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        closeHostWindowsForUpdateRelaunch()
+    }
+
+    private func closeHostWindowsForUpdateRelaunch() {
+        for window in NSApp.windows where !isSparkleWindow(window) && !(window is NSPanel) {
+            if let sheet = window.attachedSheet, !isSparkleWindow(sheet) {
+                window.endSheet(sheet)
+                sheet.close()
+            }
+            window.close()
+        }
+    }
+
+    private func isSparkleWindow(_ window: NSWindow) -> Bool {
+        let className = NSStringFromClass(type(of: window))
+        return className.contains("SU") || className.contains("SPU") || className.contains("Sparkle")
+    }
+}
+
+private extension NSUserInterfaceItemIdentifier {
+    static let browserIsolatorSettingsWindow = NSUserInterfaceItemIdentifier("BrowserIsolator.settingsWindow")
+}
+
+@MainActor
+private func isBrowserIsolatorMainWindow(_ window: NSWindow) -> Bool {
+    !(window is NSPanel) && window.identifier != .browserIsolatorSettingsWindow
 }
 
 @MainActor
@@ -48,6 +98,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         schedulePendingOpenURLFlush(attemptsRemaining: 20)
+        showMainWindowIfNeeded()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard !NSApp.windows.contains(where: { isBrowserIsolatorMainWindow($0) && $0.isVisible }) else { return }
+        showMainWindowIfNeeded()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showMainWindowIfNeeded()
+        }
+        return true
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -67,6 +130,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
               let manager = BrowserManager.shared else { return }
         manager.openExternalURLs(pendingOpenURLs)
         pendingOpenURLs.removeAll()
+    }
+
+    private func showMainWindowIfNeeded() {
+        Task { @MainActor in
+            for attempt in 0..<30 {
+                try? await Task.sleep(nanoseconds: attempt == 0 ? 200_000_000 : 100_000_000)
+                if let main = NSApp.windows.first(where: isBrowserIsolatorMainWindow) {
+                    NSApp.activate(ignoringOtherApps: true)
+                    main.orderFrontRegardless()
+                    main.makeKeyAndOrderFront(nil)
+                    return
+                }
+            }
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     private func schedulePendingOpenURLFlush(attemptsRemaining: Int) {
@@ -119,7 +197,7 @@ struct MainView: View {
     @State private var showDeleteConfirm: Profile?
     @State private var deleteConfirmText: String = ""
     @State private var selectedProfileID: String?
-    @State private var showSettings: Bool = false
+    @State private var settingsWindowController: NSWindowController?
     @AppStorage("ShowAdvancedDetails") private var showAdvancedDetails: Bool = false
 
     /// 运行中的环境排在前面
@@ -143,7 +221,7 @@ struct MainView: View {
     @ViewBuilder
     private var profileList: some View {
         HSplitView {
-            List(selection: $selectedProfileID) {
+            ScrollView {
                 if sortedProfiles.isEmpty {
                     VStack(spacing: 16) {
                         Spacer()
@@ -159,67 +237,71 @@ struct MainView: View {
                         Spacer()
                     }
                     .frame(maxWidth: .infinity)
-                    .listRowSeparator(.hidden)
+                    .frame(minHeight: 360)
                 } else {
-                    ForEach(sortedProfiles) { profile in
-                        ProfileRow(
-                            profile: profile,
-                            isSelected: selectedProfileID == profile.folder,
-                            isRunning: manager.runningProfiles.contains(profile.folder),
-                            isStarting: manager.startingProfiles.contains(profile.folder),
-                            isStopping: manager.stoppingProfiles.contains(profile.folder),
-                            diskSize: manager.profileSizes[profile.folder],
-                            lastUsed: manager.profileLastUsed[profile.folder],
-                            hasError: manager.profileErrors[profile.folder] != nil,
-                            l10n: l10n,
-                            onToggle: {
-                                if manager.runningProfiles.contains(profile.folder) {
-                                    manager.stopProfile(profile)
-                                } else {
+                    LazyVStack(spacing: 6) {
+                        ForEach(sortedProfiles) { profile in
+                            ProfileRow(
+                                profile: profile,
+                                isSelected: selectedProfileID == profile.folder,
+                                isRunning: manager.runningProfiles.contains(profile.folder),
+                                isStarting: manager.startingProfiles.contains(profile.folder),
+                                isStopping: manager.stoppingProfiles.contains(profile.folder),
+                                diskSize: manager.profileSizes[profile.folder],
+                                lastUsed: manager.profileLastUsed[profile.folder],
+                                hasError: manager.profileErrors[profile.folder] != nil,
+                                l10n: l10n,
+                                onToggle: {
+                                    selectedProfileID = profile.folder
+                                    if manager.runningProfiles.contains(profile.folder) {
+                                        manager.stopProfile(profile)
+                                    } else {
+                                        manager.startProfile(profile)
+                                    }
+                                }
+                            )
+                            .contentShape(Rectangle())
+                            .simultaneousGesture(TapGesture().onEnded {
+                                selectedProfileID = profile.folder
+                            })
+                            .highPriorityGesture(TapGesture(count: 2).onEnded {
+                                selectedProfileID = profile.folder
+                                if !manager.runningProfiles.contains(profile.folder),
+                                   !manager.startingProfiles.contains(profile.folder),
+                                   !manager.stoppingProfiles.contains(profile.folder) {
                                     manager.startProfile(profile)
                                 }
-                            }
-                        )
-                        .tag(profile.folder)
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            selectedProfileID = profile.folder
-                            if !manager.runningProfiles.contains(profile.folder),
-                               !manager.startingProfiles.contains(profile.folder),
-                               !manager.stoppingProfiles.contains(profile.folder) {
-                                manager.startProfile(profile)
-                            }
-                        }
-                        .contextMenu {
-                            Button(l10n.t("context.rename")) {
-                                renameTarget = profile
-                                renameText = profile.displayName
-                                showRenameSheet = true
-                            }
-                            if !manager.runningProfiles.contains(profile.folder),
-                               !manager.startingProfiles.contains(profile.folder),
-                               !manager.stoppingProfiles.contains(profile.folder) {
-                                Button(l10n.t("context.note")) {
-                                    noteTarget = profile
-                                    noteText = profile.note
-                                    showNoteSheet = true
+                            })
+                            .contextMenu {
+                                Button(l10n.t("context.rename")) {
+                                    renameTarget = profile
+                                    renameText = profile.displayName
+                                    showRenameSheet = true
                                 }
-                            }
-                            if !manager.runningProfiles.contains(profile.folder),
-                               !manager.stoppingProfiles.contains(profile.folder) {
-                                Divider()
-                                Button(l10n.t("context.delete"), role: .destructive) {
-                                    showDeleteConfirm = profile
-                                    deleteConfirmText = ""
+                                if !manager.runningProfiles.contains(profile.folder),
+                                   !manager.startingProfiles.contains(profile.folder),
+                                   !manager.stoppingProfiles.contains(profile.folder) {
+                                    Button(l10n.t("context.note")) {
+                                        noteTarget = profile
+                                        noteText = profile.note
+                                        showNoteSheet = true
+                                    }
+                                }
+                                if !manager.runningProfiles.contains(profile.folder),
+                                   !manager.stoppingProfiles.contains(profile.folder) {
+                                    Divider()
+                                    Button(l10n.t("context.delete"), role: .destructive) {
+                                        showDeleteConfirm = profile
+                                        deleteConfirmText = ""
+                                    }
                                 }
                             }
                         }
-                        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                        .listRowBackground(Color.clear)
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
                 }
             }
-            .listStyle(.inset(alternatesRowBackgrounds: false))
             .frame(minWidth: 340, idealWidth: 360)
 
             ProfileInspectorView(
@@ -265,7 +347,7 @@ struct MainView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    showSettings = true
+                    openSettingsWindow()
                 } label: {
                     Label(l10n.t("settings.title"), systemImage: "gearshape")
                         .labelStyle(.titleAndIcon)
@@ -318,14 +400,6 @@ struct MainView: View {
                 }
             )
         }
-        .sheet(isPresented: $showSettings) {
-            SettingsView(
-                manager: manager,
-                l10n: l10n,
-                updater: updater,
-                showAdvancedDetails: $showAdvancedDetails
-            )
-        }
         .alert(l10n.t("delete.title"), isPresented: Binding(
             get: { showDeleteConfirm != nil },
             set: {
@@ -374,6 +448,47 @@ struct MainView: View {
         if selectedProfileID == nil || !sortedProfiles.contains(where: { $0.folder == selectedProfileID }) {
             selectedProfileID = sortedProfiles.first?.folder
         }
+    }
+
+    private func openSettingsWindow() {
+        if let window = settingsWindowController?.window, window.isVisible {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 690),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        let rootView = SettingsView(
+            manager: manager,
+            l10n: l10n,
+            updater: updater,
+            showAdvancedDetails: $showAdvancedDetails,
+            onClose: { [weak window] in
+                window?.close()
+            }
+        )
+        window.contentView = NSHostingView(rootView: rootView)
+        window.identifier = .browserIsolatorSettingsWindow
+        window.title = l10n.t("settings.title")
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.center()
+
+        let controller = NSWindowController(window: window)
+        settingsWindowController = controller
+        controller.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 }
 
@@ -508,19 +623,13 @@ struct ProfileRow: View {
         .padding(.horizontal, 10)
         .background {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isSelected ? selectionTint.opacity(0.11) : Color.clear)
-                .background {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                            .opacity(0.35)
-                    }
-                }
+                .fill(isSelected ? selectionTint.opacity(0.13) : Color.clear)
         }
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isSelected ? selectionTint.opacity(0.65) : Color.clear, lineWidth: 1.2)
+                .stroke(isSelected ? selectionTint.opacity(0.28) : Color.clear, lineWidth: 1)
         }
+        .animation(.easeInOut(duration: 0.12), value: isSelected)
     }
 }
 
@@ -941,7 +1050,7 @@ struct MenuBarView: View {
             Divider()
             Button(l10n.t("menu.open_panel")) {
                 NSApp.activate(ignoringOtherApps: true)
-                if let main = NSApp.windows.first(where: { !($0 is NSPanel) }) {
+                if let main = NSApp.windows.first(where: isBrowserIsolatorMainWindow) {
                     main.makeKeyAndOrderFront(nil)
                 }
             }
@@ -1018,6 +1127,7 @@ struct SettingsView: View {
     @ObservedObject var l10n: Localization
     @ObservedObject var updater: SparkleUpdater
     @Binding var showAdvancedDetails: Bool
+    let onClose: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @AppStorage("AppAppearance") private var appAppearance: String = AppAppearance.system.rawValue
     @AppStorage("DefaultOpenProfileFolder") private var defaultOpenProfileFolder: String = ""
@@ -1219,7 +1329,11 @@ struct SettingsView: View {
 
     private var settingsCloseButton: some View {
         Button {
-            dismiss()
+            if let onClose {
+                onClose()
+            } else {
+                dismiss()
+            }
         } label: {
             ZStack {
                 Circle()
