@@ -258,20 +258,20 @@ struct MainView: View {
                                     } else {
                                         manager.startProfile(profile)
                                     }
+                                },
+                                onSelect: {
+                                    selectedProfileID = profile.folder
+                                },
+                                onDoubleClick: {
+                                    selectedProfileID = profile.folder
+                                    if !manager.runningProfiles.contains(profile.folder),
+                                       !manager.startingProfiles.contains(profile.folder),
+                                       !manager.stoppingProfiles.contains(profile.folder) {
+                                        manager.startProfile(profile)
+                                    }
                                 }
                             )
                             .contentShape(Rectangle())
-                            .simultaneousGesture(TapGesture().onEnded {
-                                selectedProfileID = profile.folder
-                            })
-                            .highPriorityGesture(TapGesture(count: 2).onEnded {
-                                selectedProfileID = profile.folder
-                                if !manager.runningProfiles.contains(profile.folder),
-                                   !manager.startingProfiles.contains(profile.folder),
-                                   !manager.stoppingProfiles.contains(profile.folder) {
-                                    manager.startProfile(profile)
-                                }
-                            })
                             .contextMenu {
                                 Button(l10n.t("context.rename")) {
                                     renameTarget = profile
@@ -530,6 +530,8 @@ struct ProfileRow: View {
     let hasError: Bool
     @ObservedObject var l10n: Localization
     let onToggle: () -> Void
+    let onSelect: () -> Void
+    let onDoubleClick: () -> Void
 
     static let sizeFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
@@ -629,7 +631,43 @@ struct ProfileRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(isSelected ? selectionTint.opacity(0.28) : Color.clear, lineWidth: 1)
         }
+        .background {
+            RowClickCatcher(onSingleClick: onSelect, onDoubleClick: onDoubleClick)
+        }
         .animation(.easeInOut(duration: 0.12), value: isSelected)
+    }
+}
+
+private struct RowClickCatcher: NSViewRepresentable {
+    let onSingleClick: () -> Void
+    let onDoubleClick: () -> Void
+
+    func makeNSView(context: Context) -> ClickCatcherView {
+        let view = ClickCatcherView()
+        view.onSingleClick = onSingleClick
+        view.onDoubleClick = onDoubleClick
+        return view
+    }
+
+    func updateNSView(_ nsView: ClickCatcherView, context: Context) {
+        nsView.onSingleClick = onSingleClick
+        nsView.onDoubleClick = onDoubleClick
+    }
+}
+
+private final class ClickCatcherView: NSView {
+    var onSingleClick: (() -> Void)?
+    var onDoubleClick: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        switch event.clickCount {
+        case 1:
+            onSingleClick?()
+        case 2:
+            onDoubleClick?()
+        default:
+            onSingleClick?()
+        }
     }
 }
 
@@ -1208,9 +1246,6 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: l10n.t("settings.about_support"), systemImage: "questionmark.circle") {
-                        Text(l10n.t("settings.version_group"))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
                         SettingsLine(label: l10n.t("settings.app_version"), value: manager.currentVersion)
                         SettingsDivider()
                         SettingsButtonRow {
@@ -1229,9 +1264,6 @@ struct SettingsView: View {
                         .labelStyle(.titleAndIcon)
                         SettingsDivider()
 
-                        Text(l10n.t("settings.author_group"))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
                         SettingsLine(label: l10n.t("settings.author"), value: "Lucas")
                         SettingsDivider()
                         SettingsLine(label: l10n.t("settings.email"), value: manager.contactEmail)
@@ -1245,10 +1277,7 @@ struct SettingsView: View {
                         }
                         SettingsDivider()
 
-                        Text(l10n.t("settings.feedback_group"))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        SettingsButtonRow {
+                        SettingsControlRow(label: l10n.t("settings.feedback_group")) {
                             Button {
                                 manager.openIssuesPage()
                             } label: {
@@ -1256,7 +1285,6 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.bordered)
                         }
-                        SettingsDivider()
                     }
                 }
                 .padding(.horizontal, 26)
@@ -1311,14 +1339,14 @@ struct SettingsView: View {
     private var settingsHeader: some View {
         ZStack {
             Text(l10n.t("settings.title"))
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
             HStack {
                 settingsCloseButton
                 Spacer()
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 15)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
