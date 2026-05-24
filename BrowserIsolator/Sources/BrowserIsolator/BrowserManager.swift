@@ -65,6 +65,8 @@ class BrowserManager: ObservableObject {
     @Published var profileSizes: [String: Int64] = [:]
     @Published var profileLastUsed: [String: Date] = [:]
     @Published var profileErrors: [String: String] = [:]
+    @Published var configSaveAlert: ConfigSaveAlert?
+    private var profileScanGeneration: UInt64 = 0
 
     @Published var updateAlert: UpdateAlert?
     @Published var showQuitConfirm: Bool = false
@@ -87,6 +89,11 @@ class BrowserManager: ObservableObject {
     struct ExternalLinkAlert: Identifiable {
         let id = UUID()
         let url: URL
+    }
+
+    struct ConfigSaveAlert: Identifiable {
+        let id = UUID()
+        let message: String
     }
 
     var chromiumExePath: String {
@@ -387,14 +394,12 @@ class BrowserManager: ObservableObject {
 
     @discardableResult
     func addProfile() -> Profile {
-        let num = config.profiles.compactMap { Int($0.folder.dropFirst()) }
-            .sorted().last ?? 0
-        let folder = "p\(num + 1)"
+        let folder = "p\(nextAvailableProfileNumber())"
         let profile = Profile(folder: folder, displayName: "")
         config.profiles.append(profile)
         let dir = AppPaths.profilesDir.appendingPathComponent(folder)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        configStore.save(config)
+        saveConfig()
         scanProfileInfo()
         return profile
     }
@@ -422,20 +427,20 @@ class BrowserManager: ObservableObject {
         profileSizes.removeValue(forKey: profile.folder)
         profileLastUsed.removeValue(forKey: profile.folder)
         profileErrors.removeValue(forKey: profile.folder)
-        configStore.save(config)
+        saveConfig()
         scanProfileInfo()
     }
 
     func updateDisplayName(for profile: Profile, newName: String) {
         guard let idx = config.profiles.firstIndex(where: { $0.folder == profile.folder }) else { return }
         config.profiles[idx].displayName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        configStore.save(config)
+        saveConfig()
     }
 
     func updateNote(for profile: Profile, newNote: String) {
         guard let idx = config.profiles.firstIndex(where: { $0.folder == profile.folder }) else { return }
         config.profiles[idx].note = newNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        configStore.save(config)
+        saveConfig()
     }
 
     func defaultOpenProfile() -> Profile? {
@@ -448,6 +453,29 @@ class BrowserManager: ObservableObject {
 
     func clearProfileError(_ profile: Profile) {
         profileErrors.removeValue(forKey: profile.folder)
+    }
+
+    private func nextAvailableProfileNumber() -> Int {
+        let usedNumbers = Set(config.profiles.compactMap {
+            let number = Int($0.folder.dropFirst())
+            return number.flatMap { $0 > 0 ? $0 : nil }
+        })
+        var candidate = 1
+        while usedNumbers.contains(candidate) {
+            candidate += 1
+        }
+        return candidate
+    }
+
+    private func saveConfig() {
+        do {
+            try configStore.save(config)
+            configSaveAlert = nil
+        } catch {
+            let message = error.localizedDescription
+            configSaveAlert = ConfigSaveAlert(message: message)
+            print("[BrowserIsolator] 配置文件保存失败: \(error)")
+        }
     }
 
     // MARK: - 检查更新
@@ -763,11 +791,17 @@ class BrowserManager: ObservableObject {
     /// 启动时扫描各环境的磁盘占用和最后使用时间
     private func scanProfileInfo() {
         let folders = config.profiles.map { $0.folder }
+        profileScanGeneration &+= 1
+        let generation = profileScanGeneration
         Task.detached(priority: .utility) { [weak self] in
             var sizes: [String: Int64] = [:]
             var lastUsed: [String: Date] = [:]
 
             for folder in folders {
+                let isCurrentGeneration = await MainActor.run { [weak self] in
+                    self?.profileScanGeneration == generation
+                }
+                guard isCurrentGeneration == true else { return }
                 let dir = AppPaths.profilesDir.appendingPathComponent(folder)
                 let dirPath = dir.path
                 let fm = FileManager.default
@@ -782,6 +816,7 @@ class BrowserManager: ObservableObject {
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
+                guard self.profileScanGeneration == generation else { return }
                 for (folder, date) in self.profileLastUsed {
                     if let scanned = lastUsed[folder] {
                         lastUsed[folder] = max(scanned, date)

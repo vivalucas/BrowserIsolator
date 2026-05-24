@@ -432,6 +432,13 @@ struct MainView: View {
                 ))
             }
         }
+        .alert(item: $manager.configSaveAlert) { alert in
+            Alert(
+                title: Text(l10n.t("config_save.title")),
+                message: Text(alert.message),
+                dismissButton: .default(Text(l10n.t("common.confirm")))
+            )
+        }
         .externalLinkAlert(manager: manager, l10n: l10n)
     }
 
