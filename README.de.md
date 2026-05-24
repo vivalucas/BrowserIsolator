@@ -11,9 +11,11 @@ BrowserIsolator verfolgt ein klares Ziel: lokale Browser-Umgebungen zuverlässig
 - **Isolierte Umgebungen**: jede Umgebung nutzt ein eigenes Chrome-Datenverzeichnis
 - **Schnelle Steuerung**: Starten, Schließen und Alle schließen im Hauptfenster oder in der Menüleiste; beim Schließen wartet die App auf das Ende von Chrome
 - **Umgebungsdetails**: Status, Ordner, Debug-Port, Speicherplatz und letzte Nutzung
-- **Eigene Namen**: Umgebungen per Kontextmenü benennen
+- **Eigene Namen und Notizen**: Umgebungen benennen und kurze Notizen für Konto, Kunde oder Zweck hinterlegen
 - **Fingerprint-Variation**: unterschiedliche Werte für `navigator.hardwareConcurrency` und `navigator.deviceMemory`, auch in neu geöffneten Tabs
+- **Externe Links**: BrowserIsolator als Standardbrowser setzen und festlegen, welche Umgebung Links aus anderen Apps öffnet
 - **Automatische Browser-Installation**: offizielles Google Chrome wird beim ersten Start geladen
+- **App-Updates**: neue Versionen über Sparkle und GitHub Releases prüfen
 - **Lokal zuerst**: Konfiguration und Profildaten bleiben auf dem Mac
 - **7 Sprachen**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
@@ -35,6 +37,8 @@ Die aktuelle Version ist für `arm64-apple-macosx13.0` gebaut und unterstützt k
    ```bash
    xattr -cr /Applications/BrowserIsolator.app
    ```
+
+Spätere App-Updates findest du unter **Einstellungen -> Info & Hilfe -> Nach Updates suchen**. Die Erstinstallation erfolgt weiterhin über das DMG auf der Releases-Seite.
 
 ### Option 2: Aus dem Quellcode bauen
 
@@ -69,14 +73,16 @@ Falls der automatische Download fehlschlägt, lade Google Chrome manuell herunte
 - **Schließen**: Schließen bei einer laufenden Umgebung klicken; bis Chrome beendet ist, erscheint der Status Schließt
 - **Alle schließen**: Alle schließen in der Symbolleiste
 - **Hinzufügen**: Umgebung hinzufügen in der Symbolleiste
-- **Umbenennen / Löschen**: Rechtsklick auf eine Umgebung; Löschen wird erst nach erfolgreichem Entfernen des Datenordners übernommen
+- **Umbenennen / Notizen / Löschen**: per Rechtsklick oder im rechten Detailbereich. Beim Löschen werden Daten in den Papierkorb verschoben
+- **Externe Links**: unter **Einstellungen -> Externe Links** die Zielumgebung wählen und BrowserIsolator als Standardbrowser setzen
+- **Einstellungen**: Chrome-Status, Datenordner, Erscheinungsbild, Sprache, Updates, Kontakt und Feedback öffnen
 - **Sprache wechseln**: Globus-Menü in Symbolleiste oder Menüleiste
 
 ## Datenort
 
 ```text
 ~/Library/Application Support/BrowserIsolator/
-├── config.json
+├── config.json          # Umgebungen, Namen und Notizen
 ├── Chromium/
 └── Profiles/
 ```
@@ -100,3 +106,11 @@ Nein, das kann nicht garantiert werden. BrowserIsolator bietet lokale Datentrenn
 ### Aktualisiert sich Chrome automatisch?
 
 Nein. Lösche zum Aktualisieren `~/Library/Application Support/BrowserIsolator/Chromium/` und starte die App erneut.
+
+### Aktualisiert sich BrowserIsolator automatisch?
+
+Die App kann nach Updates suchen. Nutze „Nach Updates suchen“ in der Menüleiste oder **Einstellungen -> Info & Hilfe**. BrowserIsolator prüft neue Versionen über Sparkle und GitHub Releases.
+
+### Wie öffne ich Links aus anderen Apps in einer bestimmten Umgebung?
+
+Öffne **Einstellungen -> Externe Links**, wähle die Zielumgebung und klicke auf „Als Standardbrowser setzen“. Danach werden http/https-Links aus Mail, Chat-Apps, Notizen und anderen Apps an diese Umgebung weitergegeben. Ist die Browserumgebung noch nicht bereit, zeigt BrowserIsolator eine Meldung und bietet das Kopieren des Links an.

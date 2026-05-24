@@ -11,9 +11,11 @@ BrowserIsolator a un objectif précis : isoler proprement les environnements de 
 - **Environnements isolés** : chaque environnement utilise son propre dossier de données Chrome
 - **Contrôle rapide** : démarrer, fermer ou tout fermer depuis le panneau principal ou la barre de menus ; la fermeture attend que Chrome quitte
 - **Informations d'environnement** : état, dossier, port de débogage, espace disque et dernière utilisation
-- **Noms personnalisés** : renommer les environnements depuis le menu contextuel
+- **Noms et notes** : nommer les environnements et ajouter une courte note pour un compte, un client ou un usage
 - **Variation d'empreinte** : valeurs différentes pour `navigator.hardwareConcurrency` et `navigator.deviceMemory`, y compris dans les nouveaux onglets
+- **Liens externes** : définir BrowserIsolator comme navigateur par défaut et choisir l'environnement qui reçoit les liens ouverts depuis d'autres apps
 - **Installation automatique du navigateur** : téléchargement de Google Chrome officiel au premier lancement
+- **Mises à jour de l'app** : vérification des nouvelles versions via Sparkle et GitHub Releases
 - **Local d'abord** : configuration et profils restent sur le Mac
 - **7 langues** : 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
@@ -35,6 +37,8 @@ La version actuelle est construite pour `arm64-apple-macosx13.0` et ne prend pas
    ```bash
    xattr -cr /Applications/BrowserIsolator.app
    ```
+
+Les mises à jour suivantes se vérifient dans **Réglages -> À propos et aide -> Rechercher des mises à jour**. La première installation passe toujours par le DMG des Releases.
 
 ### Option 2 : compiler depuis le code source
 
@@ -69,14 +73,16 @@ Si le téléchargement automatique échoue, téléchargez Google Chrome manuelle
 - **Fermer** : cliquez sur Fermer pour un environnement en cours ; l'état Fermeture reste affiché jusqu'à la sortie de Chrome
 - **Tout fermer** : utilisez Tout fermer dans la barre d'outils
 - **Ajouter** : cliquez sur Ajouter un environnement
-- **Renommer / Supprimer** : clic droit sur un environnement ; la suppression n'est appliquée qu'après suppression réussie du dossier de données
+- **Renommer / notes / supprimer** : clic droit sur un environnement ou panneau de détails à droite. La suppression déplace les données dans la corbeille
+- **Liens externes** : dans **Réglages -> Liens externes**, choisissez l'environnement cible et définissez BrowserIsolator comme navigateur par défaut
+- **Réglages** : état de Chrome, dossiers de données, apparence, langue, mises à jour, contact et liens de retour
 - **Langue** : menu globe dans la barre d'outils ou la barre de menus
 
 ## Emplacement des données
 
 ```text
 ~/Library/Application Support/BrowserIsolator/
-├── config.json
+├── config.json          # environnements, noms et notes
 ├── Chromium/
 └── Profiles/
 ```
@@ -100,3 +106,11 @@ Chrome DevTools Protocol définit `navigator.hardwareConcurrency` et `navigator.
 ### Chrome se met-il à jour automatiquement ?
 
 Non. Pour le mettre à jour, supprimez `~/Library/Application Support/BrowserIsolator/Chromium/` puis relancez l'app.
+
+### BrowserIsolator se met-il à jour automatiquement ?
+
+L'app peut rechercher les mises à jour. Utilisez Rechercher des mises à jour dans la barre de menus ou **Réglages -> À propos et aide**. BrowserIsolator utilise Sparkle et GitHub Releases.
+
+### Comment ouvrir les liens d'autres apps dans un environnement précis ?
+
+Ouvrez **Réglages -> Liens externes**, choisissez l'environnement cible, puis cliquez sur Définir le navigateur par défaut. Les liens http/https ouverts depuis Mail, les apps de messagerie, les notes et d'autres apps seront envoyés vers cet environnement. Si l'environnement n'est pas encore prêt, BrowserIsolator affiche une alerte et permet de copier le lien.

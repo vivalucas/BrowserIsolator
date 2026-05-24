@@ -11,10 +11,11 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 - **Isolated environments**: each environment uses its own Chrome data directory, keeping login state, cookies, cache, and extension settings separate
 - **One-click control**: start or close environments from the main panel or menu bar, double-click an environment row to start it, and close all environments at once; closing waits for Chrome to exit so profile locks are released cleanly
 - **Environment details**: the main list focuses on name, status, disk usage, and last-used time; profile paths, debugging ports, and advanced details live in the right-side inspector
-- **Custom names**: name a new environment immediately after creating it, or rename it later from the context menu
+- **Custom names and notes**: name a new environment immediately after creating it, rename it later, or add a short note for account, client, or workflow details
 - **Fingerprint variation**: injects different `navigator.hardwareConcurrency` and `navigator.deviceMemory` values per environment, including newly opened tabs
+- **External link routing**: set BrowserIsolator as the system default browser and choose which environment should receive links opened from other apps
 - **Automatic browser setup**: downloads official Google Chrome on first launch into the app's own data directory
-- **Settings panel**: view Chrome status, data folders, language, appearance mode, advanced-detail display options, version updates, author contact, and feedback links
+- **Settings panel**: view Chrome status, data folders, external-link behavior, language, appearance mode, advanced-detail display options, version updates, author contact, and feedback links
 - **Local-first**: configuration, browser files, and profile data stay on your Mac
 - **7 languages**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
@@ -41,7 +42,7 @@ If you need a Windows version, see the related project: [MoeMoeGit/ChromeIsolato
 
    Then open the app again. You can also right-click the app in Finder, choose Open, and confirm in the dialog.
 
-Future app updates can be checked from **Settings -> Help & Updates -> Check for Updates**. BrowserIsolator uses Sparkle to fetch updates from GitHub Releases; the first install still starts from the Releases DMG.
+Future app updates can be checked from **Settings -> About & Support -> Check for Updates**. BrowserIsolator uses Sparkle to fetch updates from GitHub Releases; the first install still starts from the Releases DMG.
 
 ### Option 2: Build from source
 
@@ -115,11 +116,13 @@ Then reopen BrowserIsolator.
 - **Close all**: use Close All in the toolbar; the app waits for all environments to exit
 - **Add**: click Add Environment in the toolbar
 - **Rename**: right-click an environment and choose Rename
+- **Notes**: add a short note from the inspector or the environment context menu to record account, client, or purpose
 - **Details**: select an environment and use the right-side inspector to view the profile path, debugging port, errors, actions, and advanced details
 - **Delete**: right-click a stopped environment and choose Delete; type the environment name to confirm, then its data is moved to Trash
-- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, change language or appearance mode, check for updates, open the release page, view author contact, or submit feedback
+- **External links**: use Settings -> External Links to choose which environment receives links opened from other apps, and optionally set BrowserIsolator as the default browser. If the browser environment is not ready yet, the app shows the link and lets you copy it
+- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, configure external links, change language or appearance mode, check for updates, open the release page, view author contact, or submit feedback
 - **Language**: use the globe menu in the toolbar or the menu bar menu
-- **Menu bar**: start, close, change language, check updates, or open the main panel
+- **Menu bar**: start, close, close all environments, change language, check updates, or open the main panel
 
 Running environments are sorted to the top. Each running environment shows its remote debugging port, useful for diagnosing browser connection and fingerprint injection state.
 
@@ -129,7 +132,7 @@ All data is stored at:
 
 ```text
 ~/Library/Application Support/BrowserIsolator/
-├── config.json
+├── config.json          # environments, custom names, and notes
 ├── Chromium/
 │   └── Google Chrome.app/
 └── Profiles/
@@ -175,7 +178,13 @@ The next launch downloads Chrome again.
 
 ### Does BrowserIsolator update automatically?
 
-It supports in-app update checks. Use Check for Updates from the menu bar or **Settings -> Help & Updates**. BrowserIsolator uses Sparkle to check GitHub Releases for new app versions. Homebrew distribution is intentionally deferred for now to avoid mixing multiple update owners for the same installed app.
+It supports in-app update checks. Use Check for Updates from the menu bar or **Settings -> About & Support**. BrowserIsolator uses Sparkle to check GitHub Releases for new app versions. Homebrew distribution is intentionally deferred for now to avoid mixing multiple update owners for the same installed app.
+
+### How do I open links from other apps in a specific environment?
+
+Open **Settings -> External Links**, choose the environment under Open in, then click Set as Default Browser. After that, http/https links opened from mail, chat apps, notes, and other apps are routed to the selected environment.
+
+If the browser environment is not ready yet, BrowserIsolator shows a prompt instead of silently dropping the link, and lets you copy the URL.
 
 ### How many environments can run at once?
 

@@ -11,9 +11,11 @@ BrowserIsolator의 목표는 명확합니다. 로컬 브라우저 환경을 안�
 - **독립 환경**: 환경마다 별도의 Chrome 데이터 디렉터리 사용
 - **빠른 실행/종료**: 메인 패널 또는 메뉴 막대에서 시작, 닫기, 모두 닫기. 닫을 때 Chrome 종료를 기다립니다
 - **환경 정보 표시**: 상태, 폴더, 디버깅 포트, 디스크 사용량, 마지막 사용 시간
-- **사용자 지정 이름**: 계정이나 용도에 맞게 환경 이름 변경
+- **이름과 메모**: 계정이나 용도에 맞게 환경 이름과 짧은 메모 지정
 - **지문 차별화**: 환경별 `navigator.hardwareConcurrency`, `navigator.deviceMemory` 값 주입, 새 탭에도 적용
+- **외부 링크**: BrowserIsolator를 기본 브라우저로 지정하고, 다른 앱에서 연 링크가 들어갈 환경 선택
 - **브라우저 자동 설치**: 처음 실행할 때 공식 Google Chrome 자동 다운로드
+- **앱 내 업데이트**: Sparkle로 GitHub Releases의 새 버전 확인
 - **로컬 우선**: 설정과 모든 환경 데이터는 Mac에만 저장
 - **7개 언어 지원**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
@@ -35,6 +37,8 @@ BrowserIsolator의 목표는 명확합니다. 로컬 브라우저 환경을 안�
    ```bash
    xattr -cr /Applications/BrowserIsolator.app
    ```
+
+이후 앱 업데이트는 **설정 -> 정보 및 지원 -> 업데이트 확인**에서 확인할 수 있습니다. 첫 설치는 계속 Releases의 DMG로 시작합니다.
 
 ### 방법 2: 직접 빌드
 
@@ -69,14 +73,16 @@ BrowserIsolator는 별도의 공식 Google Chrome 복사본을 사용합니다. 
 - **닫기**: 실행 중인 환경의 닫기 클릭. Chrome이 종료될 때까지 닫는 중 상태가 표시됩니다
 - **모두 닫기**: 툴바의 모두 닫기
 - **추가**: 툴바의 환경 추가
-- **이름 변경 / 삭제**: 환경을 우클릭. 삭제는 데이터 폴더가 성공적으로 삭제된 뒤 반영됩니다
+- **이름 변경 / 메모 / 삭제**: 환경을 우클릭하거나 오른쪽 세부 정보 패널에서 작업합니다. 삭제 시 데이터는 휴지통으로 이동합니다
+- **외부 링크**: **설정 -> 외부 링크**에서 열기 위치를 선택하고 BrowserIsolator를 기본 브라우저로 지정할 수 있습니다
+- **설정**: Chrome 상태, 데이터 폴더, 외관, 언어, 업데이트, 작성자 정보, 피드백 링크를 확인합니다
 - **언어 변경**: 툴바 또는 메뉴 막대의 지구본 메뉴
 
 ## 데이터 위치
 
 ```text
 ~/Library/Application Support/BrowserIsolator/
-├── config.json
+├── config.json          # 환경, 이름, 메모
 ├── Chromium/
 └── Profiles/
 ```
@@ -100,3 +106,11 @@ Chrome DevTools Protocol로 `navigator.hardwareConcurrency`와 `navigator.device
 ### Chrome은 자동 업데이트되나요?
 
 아니요. 업데이트하려면 `~/Library/Application Support/BrowserIsolator/Chromium/`을 삭제한 뒤 앱을 다시 실행하세요.
+
+### BrowserIsolator는 자동 업데이트되나요?
+
+앱 내에서 업데이트를 확인할 수 있습니다. 메뉴 막대의 업데이트 확인 또는 **설정 -> 정보 및 지원**을 사용하세요. 업데이트 확인은 Sparkle과 GitHub Releases를 사용합니다.
+
+### 다른 앱에서 연 링크를 특정 환경으로 보내려면?
+
+**설정 -> 외부 링크**에서 열기 위치를 선택하고 “기본 브라우저로 지정”을 클릭하세요. 메일, 채팅, 메모 등에서 연 http/https 링크가 선택한 환경으로 전달됩니다. 환경이 아직 준비되지 않았으면 링크를 복사할 수 있는 안내가 표시됩니다.
