@@ -1291,6 +1291,7 @@ struct SettingsView: View {
                 .padding(.vertical, 22)
             }
         }
+        .ignoresSafeArea(.container, edges: .top)
         .background(Color(nsColor: .windowBackgroundColor))
         .frame(width: 620, height: 690)
         .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
