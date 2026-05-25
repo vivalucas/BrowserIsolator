@@ -765,23 +765,23 @@ struct ProfileInspectorView: View {
 
                 InspectorSection(title: l10n.t("inspector.basic")) {
                     DetailLine(label: l10n.t("inspector.last_used"), value: lastUsedText(for: profile) ?? "-")
+                    DetailLine(label: l10n.t("details.run_mode"), value: runModeText(for: profile))
                     DetailLine(label: l10n.t("details.folder"), value: profile.folder)
                     DetailLine(label: l10n.t("details.profile_path"), value: profilePath(profile).path)
                     if let size = manager.profileSizes[profile.folder] {
                         DetailLine(label: l10n.t("settings.data"), value: ProfileRow.sizeFormatter.string(fromByteCount: size))
                     }
-                    if let debugPort = manager.debugPort(for: profile) {
-                        DetailLine(label: l10n.t("details.port"), value: "\(debugPort)")
-                    }
                 }
 
                 if showAdvancedDetails {
                     InspectorSection(title: l10n.t("inspector.advanced")) {
-                        DetailLine(label: l10n.t("settings.fingerprint_mode"), value: profile.fingerprintEnabled ? l10n.t("settings.fingerprint_enabled") : l10n.t("settings.compatibility_mode"))
                         if profile.fingerprintEnabled {
                             let values = fingerprintValues(for: profile)
                             DetailLine(label: l10n.t("details.cpu"), value: "\(values.cores)")
                             DetailLine(label: l10n.t("details.memory"), value: "\(values.memory) GB")
+                        }
+                        if let debugPort = manager.debugPort(for: profile) {
+                            DetailLine(label: l10n.t("details.port"), value: "\(debugPort)")
                         }
                         DetailLine(label: l10n.t("settings.chrome_version"), value: manager.chromeVersionText ?? l10n.t("settings.unknown"))
                         DetailLine(label: l10n.t("settings.open_chrome_folder"), value: manager.chromiumExePath)
@@ -865,6 +865,10 @@ struct ProfileInspectorView: View {
 
     private func profilePath(_ profile: Profile) -> URL {
         AppPaths.profilesDir.appendingPathComponent(profile.folder)
+    }
+
+    private func runModeText(for profile: Profile) -> String {
+        profile.fingerprintEnabled ? l10n.t("settings.variation_mode") : l10n.t("settings.basic_mode")
     }
 
     private func fingerprintValues(for profile: Profile) -> (cores: Int, memory: Int) {
@@ -1440,7 +1444,7 @@ struct FingerprintModeRow: View {
     }
 
     private var currentModeText: String {
-        fingerprintBinding.wrappedValue ? l10n.t("settings.fingerprint_enabled") : l10n.t("settings.compatibility_mode")
+        fingerprintBinding.wrappedValue ? l10n.t("settings.variation_mode") : l10n.t("settings.basic_mode")
     }
 
     var body: some View {
