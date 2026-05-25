@@ -10,9 +10,10 @@ BrowserIsolator a un objectif précis : isoler proprement les environnements de 
 
 - **Environnements isolés** : chaque environnement utilise son propre dossier de données Chrome
 - **Contrôle rapide** : démarrer, fermer ou tout fermer depuis le panneau principal ou la barre de menus ; la fermeture attend que Chrome quitte
-- **Informations d'environnement** : état, dossier, port de débogage, espace disque et dernière utilisation
+- **Informations d'environnement** : état, dossier, port de débogage pour les sessions en mode variation, espace disque et dernière utilisation
 - **Noms et notes** : nommer les environnements et ajouter une courte note pour un compte, un client ou un usage
-- **Variation d'empreinte** : valeurs différentes pour `navigator.hardwareConcurrency` et `navigator.deviceMemory`, y compris dans les nouveaux onglets
+- **Compatibilité d'abord** : par défaut, seul le profil est isolé, sans port de débogage ni injection de script dans les pages
+- **Variation d'empreinte optionnelle** : activable par environnement dans les réglages ; les environnements activés injectent `navigator.hardwareConcurrency` et `navigator.deviceMemory` au prochain lancement
 - **Liens externes** : définir BrowserIsolator comme navigateur par défaut et choisir l'environnement qui reçoit les liens ouverts depuis d'autres apps
 - **Installation automatique du navigateur** : téléchargement de Google Chrome officiel au premier lancement
 - **Mises à jour de l'app** : vérification des nouvelles versions via Sparkle et GitHub Releases
@@ -76,6 +77,7 @@ Si le téléchargement automatique échoue, téléchargez Google Chrome manuelle
 - **Renommer / notes / supprimer** : clic droit sur un environnement ou panneau de détails à droite. La suppression déplace les données dans la corbeille
 - **Liens externes** : dans **Réglages -> Liens externes**, choisissez l'environnement cible et définissez BrowserIsolator comme navigateur par défaut
 - **Réglages** : état de Chrome, dossiers de données, apparence, langue, mises à jour, contact et liens de retour
+- **Variation d'environnement** : activable par environnement dans les réglages. Les environnements en cours ne peuvent pas être modifiés ; fermez-les puis relancez-les
 - **Langue** : menu globe dans la barre d'outils ou la barre de menus
 
 ## Emplacement des données
@@ -97,11 +99,15 @@ Pour ne pas toucher à votre navigateur quotidien. BrowserIsolator utilise sa pr
 
 ### Est-ce que cela évite les blocages de compte ?
 
-Non garanti. BrowserIsolator fournit une isolation locale et une légère variation d'empreinte, mais ne promet pas de contourner la détection.
+Non garanti. BrowserIsolator se concentre sur l'isolation locale et propose une légère variation d'empreinte au besoin, mais ne promet pas de contourner la détection.
 
 ### Que fait la variation d'empreinte ?
 
-Chrome DevTools Protocol définit `navigator.hardwareConcurrency` et `navigator.deviceMemory` par environnement. BrowserIsolator synchronise régulièrement les page targets actuelles, donc les nouveaux onglets sont aussi injectés. Ce n'est pas une simulation complète d'appareil.
+Par défaut, rien n'est injecté. BrowserIsolator privilégie le mode compatibilité et isole seulement les données locales du profil.
+
+Si la variation d'environnement est activée dans les réglages, le prochain lancement utilise Chrome DevTools Protocol pour définir `navigator.hardwareConcurrency` et `navigator.deviceMemory` par environnement. BrowserIsolator synchronise régulièrement les page targets actuelles, donc les nouveaux onglets sont aussi injectés. Ce n'est pas une simulation complète d'appareil.
+
+Ce mode touche aux arguments de lancement de Chrome et à l'usage de CDP, il ne peut donc pas être modifié pendant qu'un environnement est en cours.
 
 ### Chrome se met-il à jour automatiquement ?
 

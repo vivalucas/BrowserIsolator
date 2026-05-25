@@ -10,9 +10,10 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 
 - **Isolated environments**: each environment uses its own Chrome data directory, keeping login state, cookies, cache, and extension settings separate
 - **One-click control**: start or close environments from the main panel or menu bar, double-click an environment row to start it, and close all environments at once; closing waits for Chrome to exit so profile locks are released cleanly
-- **Environment details**: the main list focuses on name, status, disk usage, and last-used time; profile paths, debugging ports, and advanced details live in the right-side inspector
+- **Environment details**: the main list focuses on name, status, disk usage, and last-used time; profile paths, debugging ports for variation-mode sessions, and advanced details live in the right-side inspector
 - **Custom names and notes**: name a new environment immediately after creating it, rename it later, or add a short note for account, client, or workflow details
-- **Fingerprint variation**: injects different `navigator.hardwareConcurrency` and `navigator.deviceMemory` values per environment, including newly opened tabs
+- **Compatibility-first default**: only isolates profile data by default, without a debug port or page script injection, keeping behavior close to normal Chrome
+- **Optional fingerprint variation**: enable lightweight variation per environment in Settings; enabled environments inject stable `navigator.hardwareConcurrency` and `navigator.deviceMemory` values on next launch
 - **External link routing**: set BrowserIsolator as the system default browser and choose which environment should receive links opened from other apps
 - **Automatic browser setup**: downloads official Google Chrome on first launch into the app's own data directory
 - **Settings panel**: view Chrome status, data folders, external-link behavior, language, appearance mode, advanced-detail display options, version updates, author contact, and feedback links
@@ -117,14 +118,15 @@ Then reopen BrowserIsolator.
 - **Add**: click Add Environment in the toolbar
 - **Rename**: right-click an environment and choose Rename
 - **Notes**: add a short note from the inspector or the environment context menu to record account, client, or purpose
-- **Details**: select an environment and use the right-side inspector to view the profile path, debugging port, errors, actions, and advanced details
+- **Details**: select an environment and use the right-side inspector to view the profile path, debugging port for variation-mode sessions, errors, actions, and advanced details
 - **Delete**: right-click a stopped environment and choose Delete; type the environment name to confirm, then its data is moved to Trash
 - **External links**: use Settings -> External Links to choose which environment receives links opened from other apps, and optionally set BrowserIsolator as the default browser. If the browser environment is not ready yet, the app shows the link and lets you copy it
 - **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, configure external links, change language or appearance mode, check for updates, open the release page, view author contact, or submit feedback
+- **Environment variation**: enable it per environment in Settings. Running environments cannot be changed; close them first and restart for the change to take effect
 - **Language**: use the globe menu in the toolbar or the menu bar menu
 - **Menu bar**: start, close, close all environments, change language, check updates, or open the main panel
 
-Running environments are sorted to the top. Each running environment shows its remote debugging port, useful for diagnosing browser connection and fingerprint injection state.
+Running environments are sorted to the top. Environments with fingerprint variation enabled show their remote debugging port while running, useful for diagnosing browser connection and injection state.
 
 ## Data Location
 
@@ -151,16 +153,20 @@ To avoid touching your daily browser. BrowserIsolator uses its own Chrome copy a
 
 ### Can it prevent account bans?
 
-No guarantee. BrowserIsolator focuses on local data isolation and light fingerprint variation. Website risk-control systems vary widely, and this project does not promise detection bypass.
+No guarantee. BrowserIsolator focuses on local data isolation and offers light fingerprint variation only when you enable it. Website risk-control systems vary widely, and this project does not promise detection bypass.
 
 ### What fingerprint variation is implemented?
 
-BrowserIsolator uses Chrome DevTools Protocol to inject scripts that set:
+By default, nothing is injected. BrowserIsolator prioritizes compatibility mode: it isolates local profile data without opening a debug port.
+
+If you enable fingerprint variation for an environment in Settings, the next launch uses Chrome DevTools Protocol to inject scripts that set:
 
 - `navigator.hardwareConcurrency`
 - `navigator.deviceMemory`
 
 Values are generated from the environment number and remain stable across restarts. BrowserIsolator periodically synchronizes current Chrome DevTools Protocol page targets, so newly opened tabs are injected too. This is lightweight variation, not full device simulation.
+
+Running environments cannot switch this mode because it affects Chrome launch arguments and CDP usage. Close the environment, change the setting, then start it again.
 
 ### Does video playback work?
 

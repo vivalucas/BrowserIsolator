@@ -10,9 +10,10 @@ BrowserIsolator verfolgt ein klares Ziel: lokale Browser-Umgebungen zuverlässig
 
 - **Isolierte Umgebungen**: jede Umgebung nutzt ein eigenes Chrome-Datenverzeichnis
 - **Schnelle Steuerung**: Starten, Schließen und Alle schließen im Hauptfenster oder in der Menüleiste; beim Schließen wartet die App auf das Ende von Chrome
-- **Umgebungsdetails**: Status, Ordner, Debug-Port, Speicherplatz und letzte Nutzung
+- **Umgebungsdetails**: Status, Ordner, Debug-Port bei laufender Umgebungsvariation, Speicherplatz und letzte Nutzung
 - **Eigene Namen und Notizen**: Umgebungen benennen und kurze Notizen für Konto, Kunde oder Zweck hinterlegen
-- **Fingerprint-Variation**: unterschiedliche Werte für `navigator.hardwareConcurrency` und `navigator.deviceMemory`, auch in neu geöffneten Tabs
+- **Kompatibilität zuerst**: standardmäßig wird nur das Profil getrennt, ohne Debug-Port oder Skript-Injektion in Seiten
+- **Optionale Fingerprint-Variation**: pro Umgebung in den Einstellungen aktivierbar; aktivierte Umgebungen injizieren beim nächsten Start `navigator.hardwareConcurrency` und `navigator.deviceMemory`
 - **Externe Links**: BrowserIsolator als Standardbrowser setzen und festlegen, welche Umgebung Links aus anderen Apps öffnet
 - **Automatische Browser-Installation**: offizielles Google Chrome wird beim ersten Start geladen
 - **App-Updates**: neue Versionen über Sparkle und GitHub Releases prüfen
@@ -76,6 +77,7 @@ Falls der automatische Download fehlschlägt, lade Google Chrome manuell herunte
 - **Umbenennen / Notizen / Löschen**: per Rechtsklick oder im rechten Detailbereich. Beim Löschen werden Daten in den Papierkorb verschoben
 - **Externe Links**: unter **Einstellungen -> Externe Links** die Zielumgebung wählen und BrowserIsolator als Standardbrowser setzen
 - **Einstellungen**: Chrome-Status, Datenordner, Erscheinungsbild, Sprache, Updates, Kontakt und Feedback öffnen
+- **Umgebungsvariation**: pro Umgebung in den Einstellungen aktivieren. Laufende Umgebungen können nicht geändert werden; erst schließen, dann beim nächsten Start wirksam
 - **Sprache wechseln**: Globus-Menü in Symbolleiste oder Menüleiste
 
 ## Datenort
@@ -97,11 +99,15 @@ Damit dein täglicher Browser unberührt bleibt. BrowserIsolator nutzt eine eige
 
 ### Verhindert es Kontosperren?
 
-Nein, das kann nicht garantiert werden. BrowserIsolator bietet lokale Datentrennung und leichte Fingerprint-Variation, aber keine Umgehung von Erkennungssystemen.
+Nein, das kann nicht garantiert werden. BrowserIsolator konzentriert sich auf lokale Datentrennung und bietet bei Bedarf leichte Fingerprint-Variation, aber keine Umgehung von Erkennungssystemen.
 
 ### Was macht die Fingerprint-Variation?
 
-Über Chrome DevTools Protocol werden `navigator.hardwareConcurrency` und `navigator.deviceMemory` je Umgebung gesetzt. BrowserIsolator synchronisiert regelmäßig aktuelle page targets, daher werden auch neue Tabs injiziert. Das ist keine vollständige Gerätesimulation.
+Standardmäßig wird nichts injiziert. BrowserIsolator priorisiert den Kompatibilitätsmodus und trennt nur lokale Profildaten.
+
+Wenn die Umgebungsvariation in den Einstellungen aktiviert ist, setzt BrowserIsolator beim nächsten Start über Chrome DevTools Protocol `navigator.hardwareConcurrency` und `navigator.deviceMemory` je Umgebung. Aktuelle page targets werden regelmäßig synchronisiert, daher werden auch neue Tabs injiziert. Das ist keine vollständige Gerätesimulation.
+
+Dieser Modus betrifft Chrome-Startparameter und CDP-Nutzung, daher kann er bei laufender Umgebung nicht geändert werden.
 
 ### Aktualisiert sich Chrome automatisch?
 

@@ -166,7 +166,7 @@ class BrowserManager: ObservableObject {
         do {
             profileErrors.removeValue(forKey: profile.folder)
             try validateChromiumExecutable()
-            let debugPort = try findAvailablePort(preferred: 40000 + profile.instanceNumber)
+            let debugPort = try debugPortIfNeeded(for: profile)
 
             let process = launchProfileProcess(
                 profile,
@@ -180,14 +180,18 @@ class BrowserManager: ObservableObject {
             }
             try process.run()
             processes[profile.folder] = process
-            debugPorts[profile.folder] = debugPort
+            if let debugPort {
+                debugPorts[profile.folder] = debugPort
+            }
             runningProfiles.insert(profile.folder)
             profileLastUsed[profile.folder] = Date()
 
-            // 启动 browser-level CDP 监听；新 tab 由 Target 事件驱动注入。
-            let injector = FingerprintInjector(debugPort: debugPort, instanceNumber: profile.instanceNumber)
-            fingerprintInjectors[profile.folder] = injector
-            Task { await injector.startInjection() }
+            if let debugPort {
+                // 启动 browser-level CDP 监听；新 tab 由 Target 事件驱动注入。
+                let injector = FingerprintInjector(debugPort: debugPort, instanceNumber: profile.instanceNumber)
+                fingerprintInjectors[profile.folder] = injector
+                Task { await injector.startInjection() }
+            }
 
             // 启动成功，延迟移除 starting 状态，让用户能看到反馈
             Task { [weak self, profile] in
@@ -226,6 +230,11 @@ class BrowserManager: ObservableObject {
         arguments.append(contentsOf: additionalArguments)
         process.arguments = arguments
         return process
+    }
+
+    private func debugPortIfNeeded(for profile: Profile) throws -> Int? {
+        guard profile.fingerprintEnabled else { return nil }
+        return try findAvailablePort(preferred: 40000 + profile.instanceNumber)
     }
 
     /// 从首选端口开始查找可用端口，最多尝试 10 个
@@ -441,6 +450,19 @@ class BrowserManager: ObservableObject {
         guard let idx = config.profiles.firstIndex(where: { $0.folder == profile.folder }) else { return }
         config.profiles[idx].note = newNote.trimmingCharacters(in: .whitespacesAndNewlines)
         saveConfig()
+    }
+
+    func updateFingerprintEnabled(for profile: Profile, isEnabled: Bool) {
+        guard canChangeFingerprintMode(for: profile),
+              let idx = config.profiles.firstIndex(where: { $0.folder == profile.folder }) else { return }
+        config.profiles[idx].fingerprintEnabled = isEnabled
+        saveConfig()
+    }
+
+    func canChangeFingerprintMode(for profile: Profile) -> Bool {
+        !runningProfiles.contains(profile.folder)
+            && !startingProfiles.contains(profile.folder)
+            && !stoppingProfiles.contains(profile.folder)
     }
 
     func defaultOpenProfile() -> Profile? {

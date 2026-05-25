@@ -5,11 +5,13 @@ struct Profile: Codable, Identifiable {
     let folder: String
     var displayName: String
     var note: String
+    var fingerprintEnabled: Bool
 
-    init(folder: String, displayName: String, note: String = "") {
+    init(folder: String, displayName: String, note: String = "", fingerprintEnabled: Bool = false) {
         self.folder = folder
         self.displayName = displayName
         self.note = note
+        self.fingerprintEnabled = fingerprintEnabled
     }
 
     var instanceNumber: Int {
@@ -28,6 +30,7 @@ struct Profile: Codable, Identifiable {
         case folder
         case displayName
         case note
+        case fingerprintEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -35,6 +38,7 @@ struct Profile: Codable, Identifiable {
         folder = try container.decode(String.self, forKey: .folder)
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? ""
         note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+        fingerprintEnabled = try container.decodeIfPresent(Bool.self, forKey: .fingerprintEnabled) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -42,6 +46,7 @@ struct Profile: Codable, Identifiable {
         try container.encode(folder, forKey: .folder)
         try container.encode(displayName, forKey: .displayName)
         try container.encode(note, forKey: .note)
+        try container.encode(fingerprintEnabled, forKey: .fingerprintEnabled)
     }
 }
 

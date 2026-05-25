@@ -777,9 +777,12 @@ struct ProfileInspectorView: View {
 
                 if showAdvancedDetails {
                     InspectorSection(title: l10n.t("inspector.advanced")) {
-                        let values = fingerprintValues(for: profile)
-                        DetailLine(label: l10n.t("details.cpu"), value: "\(values.cores)")
-                        DetailLine(label: l10n.t("details.memory"), value: "\(values.memory) GB")
+                        DetailLine(label: l10n.t("settings.fingerprint_mode"), value: profile.fingerprintEnabled ? l10n.t("settings.fingerprint_enabled") : l10n.t("settings.compatibility_mode"))
+                        if profile.fingerprintEnabled {
+                            let values = fingerprintValues(for: profile)
+                            DetailLine(label: l10n.t("details.cpu"), value: "\(values.cores)")
+                            DetailLine(label: l10n.t("details.memory"), value: "\(values.memory) GB")
+                        }
                         DetailLine(label: l10n.t("settings.chrome_version"), value: manager.chromeVersionText ?? l10n.t("settings.unknown"))
                         DetailLine(label: l10n.t("settings.open_chrome_folder"), value: manager.chromiumExePath)
                     }
@@ -1232,6 +1235,27 @@ struct SettingsView: View {
                         }
                     }
 
+                    SettingsSection(title: l10n.t("settings.fingerprint_mode"), systemImage: "cpu") {
+                        if manager.config.profiles.isEmpty {
+                            SettingsLine(label: l10n.t("settings.fingerprint_profiles"), value: l10n.t("settings.unknown"))
+                        } else {
+                            Text(l10n.t("settings.fingerprint_hint"))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.vertical, 7)
+                            Divider()
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(manager.config.profiles.enumerated()), id: \.element.folder) { index, profile in
+                                    FingerprintModeRow(profile: profile, manager: manager, l10n: l10n)
+                                    if index < manager.config.profiles.count - 1 {
+                                        Divider()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     SettingsSection(title: l10n.t("settings.preferences"), systemImage: "slider.horizontal.3") {
                         SettingsControlRow(label: l10n.t("language")) {
                             LanguageMenu(l10n: l10n)
@@ -1392,6 +1416,51 @@ struct SettingsView: View {
         case .light: return l10n.t("settings.appearance_light")
         case .dark: return l10n.t("settings.appearance_dark")
         }
+    }
+}
+
+struct FingerprintModeRow: View {
+    let profile: Profile
+    @ObservedObject var manager: BrowserManager
+    @ObservedObject var l10n: Localization
+
+    private var isLocked: Bool {
+        !manager.canChangeFingerprintMode(for: profile)
+    }
+
+    private var fingerprintBinding: Binding<Bool> {
+        Binding(
+            get: {
+                manager.config.profiles.first(where: { $0.folder == profile.folder })?.fingerprintEnabled ?? false
+            },
+            set: { newValue in
+                manager.updateFingerprintEnabled(for: profile, isEnabled: newValue)
+            }
+        )
+    }
+
+    private var currentModeText: String {
+        fingerprintBinding.wrappedValue ? l10n.t("settings.fingerprint_enabled") : l10n.t("settings.compatibility_mode")
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(profileTitle(profile, l10n: l10n))
+                    .foregroundStyle(.secondary)
+                Text(isLocked ? l10n.t("settings.fingerprint_locked") : currentModeText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 12)
+            Toggle("", isOn: fingerprintBinding)
+                .labelsHidden()
+                .disabled(isLocked)
+        }
+        .font(.system(size: 12))
+        .frame(minHeight: 38)
+        .help(l10n.t("settings.fingerprint_hint"))
     }
 }
 
