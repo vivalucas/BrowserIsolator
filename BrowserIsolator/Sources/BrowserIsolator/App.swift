@@ -1213,6 +1213,11 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("AppAppearance") private var appAppearance: String = AppAppearance.system.rawValue
     @AppStorage("DefaultOpenProfileFolder") private var defaultOpenProfileFolder: String = ""
+    @State private var showFingerprintManager = false
+
+    private var fingerprintEnabledCount: Int {
+        manager.config.profiles.filter(\.fingerprintEnabled).count
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1270,23 +1275,24 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: l10n.t("settings.fingerprint_mode"), systemImage: "cpu") {
-                        if manager.config.profiles.isEmpty {
-                            SettingsLine(label: l10n.t("settings.fingerprint_profiles"), value: l10n.t("settings.unknown"))
-                        } else {
-                            Text(l10n.t("settings.fingerprint_hint"))
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.vertical, 7)
-                            Divider()
-                            VStack(alignment: .leading, spacing: 0) {
-                                ForEach(Array(manager.config.profiles.enumerated()), id: \.element.folder) { index, profile in
-                                    FingerprintModeRow(profile: profile, manager: manager, l10n: l10n)
-                                    if index < manager.config.profiles.count - 1 {
-                                        Divider()
-                                    }
-                                }
+                        Text(l10n.t("settings.fingerprint_hint"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.vertical, 7)
+                        Divider()
+                        SettingsLine(
+                            label: l10n.t("settings.fingerprint_profiles"),
+                            value: l10n.format("settings.fingerprint_summary", fingerprintEnabledCount, manager.config.profiles.count)
+                        )
+                        SettingsDivider()
+                        SettingsButtonRow {
+                            Button {
+                                showFingerprintManager = true
+                            } label: {
+                                Label(l10n.t("settings.fingerprint_manage"), systemImage: "slider.horizontal.3")
                             }
+                            .buttonStyle(.bordered)
                         }
                     }
 
@@ -1387,6 +1393,10 @@ struct SettingsView: View {
         .onChange(of: manager.config.profiles.map(\.folder)) { _ in
             normalizeDefaultOpenProfileFolder()
         }
+        .sheet(isPresented: $showFingerprintManager) {
+            FingerprintModeManagerView(manager: manager, l10n: l10n)
+                .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
+        }
     }
 
     private func normalizeDefaultOpenProfileFolder() {
@@ -1453,6 +1463,125 @@ struct SettingsView: View {
     }
 }
 
+struct FingerprintModeManagerView: View {
+    @ObservedObject var manager: BrowserManager
+    @ObservedObject var l10n: Localization
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+    @State private var showEditableOnly = false
+
+    private var searchedProfiles: [Profile] {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return manager.config.profiles }
+        return manager.config.profiles.filter {
+            profileTitle($0, l10n: l10n).localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+
+    private var filteredProfiles: [Profile] {
+        searchedProfiles.filter { profile in
+            !showEditableOnly || manager.canChangeFingerprintMode(for: profile)
+        }
+    }
+
+    private var emptyMessage: String {
+        if manager.config.profiles.isEmpty {
+            return l10n.t("settings.fingerprint_empty_profiles")
+        }
+        if showEditableOnly && searchedProfiles.isEmpty == false && filteredProfiles.isEmpty {
+            return l10n.t("settings.fingerprint_no_editable")
+        }
+        return l10n.t("settings.fingerprint_no_results")
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(l10n.t("settings.fingerprint_manage_title"))
+                    .font(.system(size: 16, weight: .semibold))
+
+                Text(l10n.t("settings.fingerprint_manage_description"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField(l10n.t("settings.fingerprint_search_placeholder"), text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .font(.system(size: 12))
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color(nsColor: .textBackgroundColor).opacity(0.72))
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+
+                Toggle(isOn: $showEditableOnly) {
+                    Text(l10n.t("settings.fingerprint_editable_only"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 22)
+            .padding(.bottom, 14)
+
+            Divider()
+
+            ScrollView {
+                if filteredProfiles.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.tertiary)
+                        Text(emptyMessage)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 250)
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(filteredProfiles.enumerated()), id: \.element.folder) { index, profile in
+                            FingerprintModeRow(profile: profile, manager: manager, l10n: l10n)
+                                .padding(.horizontal, 14)
+                            if index < filteredProfiles.count - 1 {
+                                Divider()
+                                    .padding(.leading, 14)
+                            }
+                        }
+                    }
+                    .background {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.46))
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                    }
+                    .padding(22)
+                }
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button(l10n.t("common.close")) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 14)
+        }
+        .frame(width: 560, height: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
 struct FingerprintModeRow: View {
     let profile: Profile
     @ObservedObject var manager: BrowserManager
@@ -1477,14 +1606,27 @@ struct FingerprintModeRow: View {
         fingerprintBinding.wrappedValue ? l10n.t("settings.variation_mode") : l10n.t("settings.basic_mode")
     }
 
+    private var stateText: String {
+        if manager.startingProfiles.contains(profile.folder) {
+            return l10n.t("settings.fingerprint_locked_starting")
+        }
+        if manager.runningProfiles.contains(profile.folder) {
+            return l10n.t("settings.fingerprint_locked_running")
+        }
+        if manager.stoppingProfiles.contains(profile.folder) {
+            return l10n.t("settings.fingerprint_locked_stopping")
+        }
+        return l10n.format("settings.fingerprint_editable_status", currentModeText)
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(profileTitle(profile, l10n: l10n))
-                    .foregroundStyle(.secondary)
-                Text(isLocked ? l10n.t("settings.fingerprint_locked") : currentModeText)
+                    .foregroundStyle(.primary)
+                Text(stateText)
                     .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(isLocked ? .secondary : .tertiary)
                     .lineLimit(2)
             }
             Spacer(minLength: 12)
@@ -1493,7 +1635,7 @@ struct FingerprintModeRow: View {
                 .disabled(isLocked)
         }
         .font(.system(size: 12))
-        .frame(minHeight: 38)
+        .frame(minHeight: 42)
         .help(l10n.t("settings.fingerprint_hint"))
     }
 }
