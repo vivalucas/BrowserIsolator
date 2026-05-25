@@ -382,8 +382,11 @@ struct MainView: View {
                     renameText = ""
                     showRenameSheet = true
                 } label: {
-                    Label(l10n.t("toolbar.add"), systemImage: "plus")
-                        .labelStyle(.titleAndIcon)
+                    ToolbarSemanticLabel(
+                        title: l10n.t("toolbar.add"),
+                        systemImage: "plus",
+                        kind: .primary
+                    )
                 }
                 .buttonStyle(ToolbarSemanticButtonStyle(kind: .primary))
             }
@@ -402,8 +405,11 @@ struct MainView: View {
                 Button(role: .destructive) {
                     manager.stopAll()
                 } label: {
-                    Label(l10n.t("toolbar.stop_all"), systemImage: "stop.fill")
-                        .labelStyle(.titleAndIcon)
+                    ToolbarSemanticLabel(
+                        title: l10n.t("toolbar.stop_all"),
+                        systemImage: "stop.fill",
+                        kind: .destructive
+                    )
                 }
                 .disabled(manager.runningProfiles.isEmpty && manager.stoppingProfiles.isEmpty)
                 .buttonStyle(ToolbarSemanticButtonStyle(kind: .destructive))
@@ -539,6 +545,41 @@ struct MainView: View {
     }
 }
 
+private struct ToolbarSemanticLabel: View {
+    let title: String
+    let systemImage: String
+    let kind: ToolbarSemanticButtonStyle.Kind
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(iconColor)
+            Text(title)
+                .foregroundStyle(textColor)
+        }
+    }
+
+    private var iconColor: Color {
+        guard isEnabled else { return disabledColor }
+        switch kind {
+        case .primary:
+            return Color(nsColor: .systemTeal)
+        case .destructive:
+            return Color(nsColor: .systemRed)
+        }
+    }
+
+    private var textColor: Color {
+        isEnabled ? Color.primary : disabledColor
+    }
+
+    private var disabledColor: Color {
+        Color(nsColor: .disabledControlTextColor)
+    }
+}
+
 private struct ToolbarSemanticButtonStyle: ButtonStyle {
     enum Kind {
         case primary
@@ -547,23 +588,20 @@ private struct ToolbarSemanticButtonStyle: ButtonStyle {
 
     let kind: Kind
     @Environment(\.isEnabled) private var isEnabled
+    private let cornerRadius: CGFloat = 6
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(
-                Color.primary,
-                isEnabled ? enabledColor : disabledColor
-            )
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background {
-                Capsule(style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(backgroundColor(isPressed: configuration.isPressed))
-                Capsule(style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(borderColor, lineWidth: 1)
             }
-            .contentShape(Capsule(style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 
     private var enabledColor: Color {
