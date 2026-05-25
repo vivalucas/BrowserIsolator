@@ -436,6 +436,7 @@ class BrowserManager: ObservableObject {
 
     func moveProfileToTrash(_ profile: Profile) {
         guard !runningProfiles.contains(profile.folder),
+              !startingProfiles.contains(profile.folder),
               !stoppingProfiles.contains(profile.folder) else { return }
         pendingExternalURLs.removeValue(forKey: profile.folder)
         let dir = AppPaths.profilesDir.appendingPathComponent(profile.folder)

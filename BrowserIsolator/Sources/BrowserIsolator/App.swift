@@ -1,6 +1,8 @@
 import SwiftUI
 import Sparkle
 
+private let deleteConfirmationKeyword = "Delete"
+
 @main
 struct BrowserIsolatorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -305,6 +307,7 @@ struct MainView: View {
                                     }
                                 }
                                 if !manager.runningProfiles.contains(profile.folder),
+                                   !manager.startingProfiles.contains(profile.folder),
                                    !manager.stoppingProfiles.contains(profile.folder) {
                                     Divider()
                                     Button(l10n.t("context.delete"), role: .destructive) {
@@ -431,19 +434,22 @@ struct MainView: View {
             }
             Button(l10n.t("common.delete"), role: .destructive) {
                 if let p = showDeleteConfirm,
-                   deleteConfirmText == profileTitle(p, l10n: l10n) {
+                   deleteConfirmText.trimmingCharacters(in: .whitespacesAndNewlines) == deleteConfirmationKeyword {
                     manager.moveProfileToTrash(p)
                 }
                 showDeleteConfirm = nil
                 deleteConfirmText = ""
             }
-            .disabled(showDeleteConfirm.map { deleteConfirmText != profileTitle($0, l10n: l10n) } ?? true)
+            .disabled(
+                deleteConfirmText.trimmingCharacters(in: .whitespacesAndNewlines) != deleteConfirmationKeyword
+            )
         } message: {
             if let p = showDeleteConfirm {
                 Text(l10n.format(
                     "delete.message",
                     profileTitle(p, l10n: l10n),
-                    ProfileRow.sizeFormatter.string(fromByteCount: manager.profileSizes[p.folder] ?? 0)
+                    ProfileRow.sizeFormatter.string(fromByteCount: manager.profileSizes[p.folder] ?? 0),
+                    deleteConfirmationKeyword
                 ))
             }
         }
@@ -864,7 +870,7 @@ struct ProfileInspectorView: View {
                         } label: {
                             Label(l10n.t("common.delete"), systemImage: "trash")
                         }
-                        .disabled(isRunning(profile) || isStopping(profile))
+                        .disabled(isRunning(profile) || isStarting(profile) || isStopping(profile))
                     }
                 }
             }
