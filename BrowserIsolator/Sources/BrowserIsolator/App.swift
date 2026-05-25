@@ -358,8 +358,7 @@ struct MainView: View {
                     Label(l10n.t("toolbar.add"), systemImage: "plus")
                         .labelStyle(.titleAndIcon)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.teal)
+                .buttonStyle(ToolbarSemanticButtonStyle(kind: .primary))
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -380,8 +379,7 @@ struct MainView: View {
                         .labelStyle(.titleAndIcon)
                 }
                 .disabled(manager.runningProfiles.isEmpty && manager.stoppingProfiles.isEmpty)
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
+                .buttonStyle(ToolbarSemanticButtonStyle(kind: .destructive))
             }
         }
         .sheet(isPresented: $showRenameSheet) {
@@ -505,6 +503,59 @@ struct MainView: View {
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+}
+
+private struct ToolbarSemanticButtonStyle: ButtonStyle {
+    enum Kind {
+        case primary
+        case destructive
+    }
+
+    let kind: Kind
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(foregroundColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(backgroundColor(isPressed: configuration.isPressed))
+                Capsule(style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1 : 0.58)
+            .contentShape(Capsule(style: .continuous))
+    }
+
+    private var enabledColor: Color {
+        switch kind {
+        case .primary:
+            return Color(nsColor: .systemTeal)
+        case .destructive:
+            return Color(nsColor: .systemRed)
+        }
+    }
+
+    private var foregroundColor: Color {
+        isEnabled ? .white : Color(nsColor: .disabledControlTextColor)
+    }
+
+    private func backgroundColor(isPressed: Bool) -> Color {
+        guard isEnabled else {
+            return Color(nsColor: .disabledControlTextColor).opacity(0.12)
+        }
+        return enabledColor.opacity(isPressed ? 0.72 : 0.94)
+    }
+
+    private var borderColor: Color {
+        guard isEnabled else {
+            return Color(nsColor: .disabledControlTextColor).opacity(0.16)
+        }
+        return enabledColor.opacity(0.82)
     }
 }
 
