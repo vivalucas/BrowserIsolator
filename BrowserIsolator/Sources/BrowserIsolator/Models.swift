@@ -62,6 +62,16 @@ struct AppConfig: Codable {
     )
 }
 
+struct ConfigLoadResult {
+    let config: AppConfig
+    let alert: ConfigLoadAlert?
+}
+
+struct ConfigLoadAlert: Identifiable {
+    let id = UUID()
+    let backupPath: String?
+}
+
 /// ~/Library/Application Support/BrowserIsolator/
 struct AppPaths {
     static let supportDir: URL = {
@@ -87,12 +97,26 @@ class ConfigStore {
         self.configURL = AppPaths.configFile
     }
 
-    func load() -> AppConfig {
-        guard let data = try? Data(contentsOf: configURL),
-              let config = try? JSONDecoder().decode(AppConfig.self, from: data) else {
-            return .default
+    func load() -> ConfigLoadResult {
+        guard let data = try? Data(contentsOf: configURL) else {
+            if FileManager.default.fileExists(atPath: configURL.path) {
+                return ConfigLoadResult(config: .default, alert: ConfigLoadAlert(backupPath: nil))
+            }
+            return ConfigLoadResult(config: .default, alert: nil)
         }
-        return config
+        if let config = try? JSONDecoder().decode(AppConfig.self, from: data) {
+            return ConfigLoadResult(config: config, alert: nil)
+        }
+
+        if FileManager.default.fileExists(atPath: configURL.path) {
+            let backupName = "config.corrupt-\(Int(Date().timeIntervalSince1970)).json"
+            let backupURL = configURL.deletingLastPathComponent().appendingPathComponent(backupName)
+            try? FileManager.default.removeItem(at: backupURL)
+            if (try? FileManager.default.moveItem(at: configURL, to: backupURL)) != nil {
+                return ConfigLoadResult(config: .default, alert: ConfigLoadAlert(backupPath: backupURL.path))
+            }
+        }
+        return ConfigLoadResult(config: .default, alert: ConfigLoadAlert(backupPath: nil))
     }
 
     func save(_ config: AppConfig) throws {

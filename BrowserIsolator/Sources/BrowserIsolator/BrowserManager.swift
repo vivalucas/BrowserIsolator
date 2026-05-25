@@ -65,8 +65,10 @@ class BrowserManager: ObservableObject {
     @Published var profileSizes: [String: Int64] = [:]
     @Published var profileLastUsed: [String: Date] = [:]
     @Published var profileErrors: [String: String] = [:]
+    @Published var configLoadAlert: ConfigLoadAlert?
     @Published var configSaveAlert: ConfigSaveAlert?
     private var profileScanGeneration: UInt64 = 0
+    private var profileSizeCache: [String: ProfileSizeCacheEntry] = [:]
 
     @Published var updateAlert: UpdateAlert?
     @Published var showQuitConfirm: Bool = false
@@ -87,13 +89,23 @@ class BrowserManager: ObservableObject {
     }
 
     struct ExternalLinkAlert: Identifiable {
+        enum Kind {
+            case link(URL)
+            case noAvailableProfile(URL?)
+        }
+
         let id = UUID()
-        let url: URL
+        let kind: Kind
     }
 
     struct ConfigSaveAlert: Identifiable {
         let id = UUID()
         let message: String
+    }
+
+    private struct ProfileSizeCacheEntry {
+        let directoryModificationDate: Date?
+        let size: Int64
     }
 
     var chromiumExePath: String {
@@ -124,7 +136,9 @@ class BrowserManager: ObservableObject {
 
     init() {
         AppPaths.ensureDirectories()
-        self.config = configStore.load()
+        let loadResult = configStore.load()
+        self.config = loadResult.config
+        self.configLoadAlert = loadResult.alert
         BrowserManager.shared = self
         ensureProfileDirs()
 
@@ -368,6 +382,7 @@ class BrowserManager: ObservableObject {
         runningProfiles.remove(folder)
         stoppingProfiles.remove(folder)
         profileLastUsed[folder] = Date()
+        profileSizeCache.removeValue(forKey: folder)
         scanProfileInfo()
         return true
     }
@@ -383,6 +398,7 @@ class BrowserManager: ObservableObject {
             runningProfiles.remove(folder)
             stoppingProfiles.remove(folder)
             profileLastUsed[folder] = now
+            profileSizeCache.removeValue(forKey: folder)
             changed = true
         }
         if changed {
@@ -408,6 +424,7 @@ class BrowserManager: ObservableObject {
         config.profiles.append(profile)
         let dir = AppPaths.profilesDir.appendingPathComponent(folder)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        profileSizeCache.removeValue(forKey: folder)
         saveConfig()
         scanProfileInfo()
         return profile
@@ -435,6 +452,7 @@ class BrowserManager: ObservableObject {
         config.profiles.removeAll { $0.folder == profile.folder }
         profileSizes.removeValue(forKey: profile.folder)
         profileLastUsed.removeValue(forKey: profile.folder)
+        profileSizeCache.removeValue(forKey: profile.folder)
         profileErrors.removeValue(forKey: profile.folder)
         saveConfig()
         scanProfileInfo()
@@ -548,11 +566,12 @@ class BrowserManager: ObservableObject {
         let validURLs = urls.filter { ["http", "https"].contains($0.scheme?.lowercased() ?? "") }
         guard !validURLs.isEmpty else { return }
         guard chromiumReady else {
-            externalLinkAlert = ExternalLinkAlert(url: validURLs[0])
+            externalLinkAlert = ExternalLinkAlert(kind: .link(validURLs[0]))
             return
         }
         guard let profile = defaultOpenProfile() else {
             print("[BrowserIsolator] 外部链接到达，但没有可用环境")
+            externalLinkAlert = ExternalLinkAlert(kind: .noAvailableProfile(validURLs[0]))
             return
         }
         if startingProfiles.contains(profile.folder) {
@@ -619,7 +638,7 @@ class BrowserManager: ObservableObject {
     }
 
     func reinstallChromium() {
-        guard runningProfiles.isEmpty, stoppingProfiles.isEmpty else { return }
+        guard runningProfiles.isEmpty, stoppingProfiles.isEmpty, startingProfiles.isEmpty else { return }
         do {
             try FileManager.default.createDirectory(at: AppPaths.chromiumDir, withIntermediateDirectories: true)
             chromiumReady = false
@@ -813,11 +832,15 @@ class BrowserManager: ObservableObject {
     /// 启动时扫描各环境的磁盘占用和最后使用时间
     private func scanProfileInfo() {
         let folders = config.profiles.map { $0.folder }
+        let folderSet = Set(folders)
+        let activeFolders = runningProfiles.union(startingProfiles).union(stoppingProfiles)
+        let sizeCacheSnapshot = profileSizeCache
         profileScanGeneration &+= 1
         let generation = profileScanGeneration
         Task.detached(priority: .utility) { [weak self] in
             var sizes: [String: Int64] = [:]
             var lastUsed: [String: Date] = [:]
+            var nextSizeCache = sizeCacheSnapshot
 
             for folder in folders {
                 let isCurrentGeneration = await MainActor.run { [weak self] in
@@ -831,9 +854,23 @@ class BrowserManager: ObservableObject {
                 if let attrs = try? fm.attributesOfItem(atPath: dirPath),
                    let date = attrs[.modificationDate] as? Date {
                     lastUsed[folder] = date
+                } else {
+                    lastUsed[folder] = nil
                 }
 
-                sizes[folder] = Self.directorySize(at: dirPath)
+                let modificationDate = lastUsed[folder]
+                if !activeFolders.contains(folder),
+                   let cached = sizeCacheSnapshot[folder],
+                   cached.directoryModificationDate == modificationDate {
+                    sizes[folder] = cached.size
+                } else {
+                    let size = Self.directorySize(at: dirPath)
+                    sizes[folder] = size
+                    nextSizeCache[folder] = ProfileSizeCacheEntry(
+                        directoryModificationDate: modificationDate,
+                        size: size
+                    )
+                }
             }
 
             await MainActor.run { [weak self] in
@@ -848,6 +885,7 @@ class BrowserManager: ObservableObject {
                 }
                 self.profileSizes = sizes
                 self.profileLastUsed = lastUsed
+                self.profileSizeCache = nextSizeCache.filter { folderSet.contains($0.key) }
             }
         }
     }

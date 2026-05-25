@@ -211,11 +211,28 @@ struct MainView: View {
     }
 
     var body: some View {
-        if !manager.chromiumReady {
-            DownloadView(manager: manager, l10n: l10n)
-        } else {
-            profileList
+        Group {
+            if !manager.chromiumReady {
+                DownloadView(manager: manager, l10n: l10n)
+            } else {
+                profileList
+            }
         }
+        .alert(item: $manager.configLoadAlert) { alert in
+            Alert(
+                title: Text(l10n.t("config_load.title")),
+                message: Text(alert.backupPath.map { l10n.format("config_load.message_with_backup", $0) } ?? l10n.t("config_load.message")),
+                dismissButton: .default(Text(l10n.t("common.confirm")))
+            )
+        }
+        .alert(item: $manager.configSaveAlert) { alert in
+            Alert(
+                title: Text(l10n.t("config_save.title")),
+                message: Text(alert.message),
+                dismissButton: .default(Text(l10n.t("common.confirm")))
+            )
+        }
+        .externalLinkAlert(manager: manager, l10n: l10n)
     }
 
     @ViewBuilder
@@ -432,14 +449,6 @@ struct MainView: View {
                 ))
             }
         }
-        .alert(item: $manager.configSaveAlert) { alert in
-            Alert(
-                title: Text(l10n.t("config_save.title")),
-                message: Text(alert.message),
-                dismissButton: .default(Text(l10n.t("common.confirm")))
-            )
-        }
-        .externalLinkAlert(manager: manager, l10n: l10n)
     }
 
     private var selectedProfile: Profile? {
@@ -1160,14 +1169,35 @@ private extension View {
             get: { manager.externalLinkAlert },
             set: { manager.externalLinkAlert = $0 }
         )) { alert in
-            Alert(
-                title: Text(l10n.t("external_link.title")),
-                message: Text(l10n.format("external_link.message", alert.url.absoluteString)),
-                primaryButton: .default(Text(l10n.t("external_link.copy"))) {
-                    manager.copyExternalLink(alert.url)
-                },
-                secondaryButton: .cancel(Text(l10n.t("common.confirm")))
-            )
+            switch alert.kind {
+            case .link(let url):
+                return Alert(
+                    title: Text(l10n.t("external_link.title")),
+                    message: Text(l10n.format("external_link.message", url.absoluteString)),
+                    primaryButton: .default(Text(l10n.t("external_link.copy"))) {
+                        manager.copyExternalLink(url)
+                    },
+                    secondaryButton: .cancel(Text(l10n.t("common.confirm")))
+                )
+            case .noAvailableProfile(let url):
+                let message = url.map { l10n.format("external_link.no_profile_message", $0.absoluteString) } ?? l10n.t("external_link.no_profile_message")
+                return Alert(
+                    title: Text(l10n.t("external_link.title")),
+                    message: Text(message),
+                    primaryButton: .default(Text(l10n.t("menu.open_panel"))) {
+                        NSApp.activate(ignoringOtherApps: true)
+                        if let main = NSApp.windows.first(where: isBrowserIsolatorMainWindow) {
+                            main.orderFrontRegardless()
+                            main.makeKeyAndOrderFront(nil)
+                        }
+                    },
+                    secondaryButton: url.map { copyURL in
+                        .default(Text(l10n.t("external_link.copy"))) {
+                            manager.copyExternalLink(copyURL)
+                        }
+                    } ?? .cancel(Text(l10n.t("common.confirm")))
+                )
+            }
         }
     }
 }
@@ -1198,7 +1228,7 @@ struct SettingsView: View {
                         SettingsButtonRow {
                             Button(l10n.t("settings.open_chrome_folder")) { manager.openChromiumFolder() }
                             Button(l10n.t("settings.redownload_chrome")) { manager.reinstallChromium() }
-                                .disabled(!manager.runningProfiles.isEmpty || !manager.stoppingProfiles.isEmpty)
+                                .disabled(!manager.runningProfiles.isEmpty || !manager.stoppingProfiles.isEmpty || !manager.startingProfiles.isEmpty)
                         }
                     }
 
