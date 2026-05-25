@@ -20,6 +20,12 @@ struct BrowserIsolatorApp: App {
             MainView(manager: manager, l10n: localization, updater: updater)
                 .frame(minWidth: 680, idealWidth: 760, minHeight: 420)
                 .preferredColorScheme(preferredColorScheme)
+                .onAppear {
+                    applyAppAppearance(AppAppearance(rawValue: appAppearance) ?? .system)
+                }
+                .onChange(of: appAppearance) { newValue in
+                    applyAppAppearance(AppAppearance(rawValue: newValue) ?? .system)
+                }
         }
         .windowResizability(.contentSize)
         .defaultSize(width: 760, height: 520)
@@ -181,6 +187,24 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         case .light: return .light
         case .dark: return .dark
         }
+    }
+
+    var nsAppearanceName: NSAppearance.Name? {
+        switch self {
+        case .system: return nil
+        case .light: return .aqua
+        case .dark: return .darkAqua
+        }
+    }
+}
+
+@MainActor
+private func applyAppAppearance(_ appearance: AppAppearance) {
+    let nsAppearance = appearance.nsAppearanceName.flatMap(NSAppearance.init(named:))
+    NSApp.appearance = nsAppearance
+    for window in NSApp.windows {
+        window.appearance = nsAppearance
+        window.contentView?.appearance = nsAppearance
     }
 }
 
@@ -499,6 +523,9 @@ struct MainView: View {
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
+        applyAppAppearance(AppAppearance(rawValue: UserDefaults.standard.string(forKey: "AppAppearance") ?? "") ?? .system)
+        window.appearance = NSApp.appearance
+        window.contentView?.appearance = NSApp.appearance
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
@@ -1423,6 +1450,12 @@ struct SettingsView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .frame(width: 620, height: 690)
         .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
+        .onAppear {
+            applyAppAppearance(AppAppearance(rawValue: appAppearance) ?? .system)
+        }
+        .onChange(of: appAppearance) { newValue in
+            applyAppAppearance(AppAppearance(rawValue: newValue) ?? .system)
+        }
         .alert(item: $manager.updateAlert) { alert in
             switch alert {
             case .upToDate:
