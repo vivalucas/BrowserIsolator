@@ -551,7 +551,10 @@ private struct ToolbarSemanticButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(foregroundColor)
+            .foregroundStyle(
+                Color.primary,
+                isEnabled ? enabledColor : disabledColor
+            )
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background {
@@ -560,7 +563,6 @@ private struct ToolbarSemanticButtonStyle: ButtonStyle {
                 Capsule(style: .continuous)
                     .strokeBorder(borderColor, lineWidth: 1)
             }
-            .opacity(isEnabled ? 1 : 0.58)
             .contentShape(Capsule(style: .continuous))
     }
 
@@ -573,20 +575,20 @@ private struct ToolbarSemanticButtonStyle: ButtonStyle {
         }
     }
 
-    private var foregroundColor: Color {
-        isEnabled ? .white : Color(nsColor: .disabledControlTextColor)
+    private var disabledColor: Color {
+        Color(nsColor: .disabledControlTextColor)
     }
 
     private func backgroundColor(isPressed: Bool) -> Color {
         guard isEnabled else {
-            return Color(nsColor: .disabledControlTextColor).opacity(0.12)
+            return Color(nsColor: .controlBackgroundColor).opacity(0.5)
         }
-        return enabledColor.opacity(isPressed ? 0.72 : 0.94)
+        return Color(nsColor: .controlBackgroundColor).opacity(isPressed ? 0.72 : 0.46)
     }
 
     private var borderColor: Color {
         guard isEnabled else {
-            return Color(nsColor: .disabledControlTextColor).opacity(0.16)
+            return disabledColor.opacity(0.18)
         }
         return enabledColor.opacity(0.82)
     }
