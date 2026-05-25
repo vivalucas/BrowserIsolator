@@ -12,12 +12,14 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 - **One-click control**: start or close environments from the main panel or menu bar, double-click an environment row to start it, and close all environments at once; closing waits for Chrome to exit so profile locks are released cleanly
 - **Environment details**: the main list focuses on name, status, disk usage, and last-used time; the right-side inspector shows profile path, run mode, actions, and advanced details. Debug ports appear only in advanced details when applicable
 - **Custom names and notes**: name a new environment immediately after creating it, rename it later, or add a short note for account, client, or workflow details
+- **Safe deletion**: deleting an environment requires typing its name, then its profile data is moved to Trash
 - **Basic Mode by default**: isolates profile data without a debug port or page script injection, keeping behavior close to normal Chrome
 - **Optional Variation Mode**: enable lightweight variation per environment in Settings; enabled environments inject stable `navigator.hardwareConcurrency` and `navigator.deviceMemory` values on next launch
-- **External link routing**: set BrowserIsolator as the system default browser and choose which environment should receive links opened from other apps
+- **External link routing**: set BrowserIsolator as the system default browser and choose which environment should receive links opened from other apps; if no target is available, the app prompts instead of dropping the link
 - **Automatic browser setup**: downloads official Google Chrome on first launch into the app's own data directory
 - **Settings panel**: view Chrome status, data folders, external-link behavior, language, appearance mode, advanced-detail display options, version updates, author contact, and feedback links
-- **Local-first**: configuration, browser files, and profile data stay on your Mac
+- **Config recovery**: if `config.json` is corrupt or unreadable, BrowserIsolator loads defaults and tries to preserve the bad file as a timestamped backup
+- **Local-first**: configuration, browser files, and profile data stay on your Mac; BrowserIsolator does not upload or collect user data
 - **7 languages**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
 ## Requirements
@@ -120,8 +122,8 @@ Then reopen BrowserIsolator.
 - **Notes**: add a short note from the inspector or the environment context menu to record account, client, or purpose
 - **Details**: select an environment and use the right-side inspector to view the profile path, run mode, errors, actions, and advanced details
 - **Delete**: right-click a stopped environment and choose Delete; type the environment name to confirm, then its data is moved to Trash
-- **External links**: use Settings -> External Links to choose which environment receives links opened from other apps, and optionally set BrowserIsolator as the default browser. If the browser environment is not ready yet, the app shows the link and lets you copy it
-- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, configure external links, change language or appearance mode, check for updates, open the release page, view author contact, or submit feedback
+- **External links**: use Settings -> External Links to choose which environment receives links opened from other apps, and optionally set BrowserIsolator as the default browser. If the browser environment is not ready yet, or if no usable environment exists, the app shows the link and lets you copy it; when no environment is available, it can also open the main panel
+- **Settings**: use the toolbar gear to open data folders, copy paths, view Chrome version, redownload Chrome, configure external links, change language or appearance mode, check for updates, open the release page, view author contact, or submit feedback. Redownloading Chrome is available only when no environment is starting, running, or closing
 - **Variation Mode**: enable it per environment in Settings. Running environments cannot be changed; close them first and restart for the change to take effect
 - **Language**: use the globe menu in the toolbar or the menu bar menu
 - **Menu bar**: start, close, close all environments, change language, check updates, or open the main panel
@@ -144,6 +146,8 @@ All data is stored at:
 ```
 
 To fully remove all data after uninstalling, delete the entire `BrowserIsolator` directory.
+
+If `config.json` is corrupt or cannot be read, BrowserIsolator shows an alert, loads the default configuration, and tries to preserve the original file as `config.corrupt-<timestamp>.json`.
 
 ## FAQ
 
@@ -174,7 +178,9 @@ Yes. The app uses official Google Chrome, so mainstream video sites and common c
 
 ### Does Chrome update automatically?
 
-No. To update Chrome manually, delete:
+No. To update Chrome manually, use **Settings -> Redownload Chrome** first. All environments must be stopped and must not be starting or closing.
+
+You can also delete:
 
 ```text
 ~/Library/Application Support/BrowserIsolator/Chromium/
@@ -190,7 +196,7 @@ It supports in-app update checks. Use Check for Updates from the menu bar or **S
 
 Open **Settings -> External Links**, choose the environment under Open in, then click Set as Default Browser. After that, http/https links opened from mail, chat apps, notes, and other apps are routed to the selected environment.
 
-If the browser environment is not ready yet, BrowserIsolator shows a prompt instead of silently dropping the link, and lets you copy the URL.
+If the browser environment is not ready yet, or if no usable environment exists, BrowserIsolator shows a prompt instead of silently dropping the link and lets you copy the URL. When no environment is available, it can also open the main panel.
 
 ### How many environments can run at once?
 

@@ -9,15 +9,17 @@ BrowserIsolator verfolgt ein klares Ziel: lokale Browser-Umgebungen zuverlässig
 ## Funktionen
 
 - **Isolierte Umgebungen**: jede Umgebung nutzt ein eigenes Chrome-Datenverzeichnis
-- **Schnelle Steuerung**: Starten, Schließen und Alle schließen im Hauptfenster oder in der Menüleiste; beim Schließen wartet die App auf das Ende von Chrome
-- **Umgebungsdetails**: Status, Ordner, Ausführungsmodus, Speicherplatz und letzte Nutzung; Debug-Ports erscheinen nur bei Bedarf in den erweiterten Details
+- **Schnelle Steuerung**: Starten, Schließen und Alle schließen im Hauptfenster oder in der Menüleiste; ein Doppelklick auf eine Umgebungszeile startet sie, und beim Schließen wartet die App auf das Ende von Chrome
+- **Umgebungsdetails**: die linke Liste zeigt Status, Speicherplatz und letzte Nutzung; der rechte Detailbereich zeigt Profilpfad, Ausführungsmodus, Fehler, Aktionen und erweiterte Details. Debug-Ports erscheinen nur bei Bedarf in den erweiterten Details
 - **Eigene Namen und Notizen**: Umgebungen benennen und kurze Notizen für Konto, Kunde oder Zweck hinterlegen
+- **Sicheres Löschen**: beim Löschen muss der Umgebungsname eingegeben werden; die Daten werden in den Papierkorb verschoben
 - **Basismodus zuerst**: standardmäßig wird nur das Profil getrennt, ohne Debug-Port oder Skript-Injektion in Seiten
 - **Optionaler Variationsmodus**: pro Umgebung in den Einstellungen aktivierbar; aktivierte Umgebungen injizieren beim nächsten Start `navigator.hardwareConcurrency` und `navigator.deviceMemory`
-- **Externe Links**: BrowserIsolator als Standardbrowser setzen und festlegen, welche Umgebung Links aus anderen Apps öffnet
+- **Externe Links**: BrowserIsolator als Standardbrowser setzen und festlegen, welche Umgebung Links aus anderen Apps öffnet; ist kein Ziel verfügbar, zeigt die App eine Meldung statt den Link zu verlieren
 - **Automatische Browser-Installation**: offizielles Google Chrome wird beim ersten Start geladen
-- **App-Updates**: neue Versionen über Sparkle und GitHub Releases prüfen
-- **Lokal zuerst**: Konfiguration und Profildaten bleiben auf dem Mac
+- **Einstellungen**: Chrome-Status und Version, Datenordner, Pfade kopieren, Chrome erneut laden, externe Links, Sprache, Erscheinungsbild, erweiterte Details, Updates, Kontakt und Feedback
+- **Konfigurationswiederherstellung**: wenn `config.json` beschädigt oder unlesbar ist, lädt BrowserIsolator Standardwerte und sichert die beschädigte Datei nach Möglichkeit
+- **Lokal zuerst**: Konfiguration, Chrome und Profildaten bleiben auf dem Mac; BrowserIsolator lädt keine Nutzerdaten hoch und sammelt sie nicht
 - **7 Sprachen**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
 
 ## Anforderungen
@@ -70,13 +72,13 @@ Falls der automatische Download fehlschlägt, lade Google Chrome manuell herunte
 
 ## Verwendung
 
-- **Starten**: Start in einer Umgebungszeile klicken; bei Fehlern zeigt die App eine Meldung
+- **Starten**: Start in einer Umgebungszeile klicken, die Zeile doppelklicken oder den rechten Detailbereich nutzen; bei Fehlern zeigt die App eine Meldung
 - **Schließen**: Schließen bei einer laufenden Umgebung klicken; bis Chrome beendet ist, erscheint der Status Schließt
 - **Alle schließen**: Alle schließen in der Symbolleiste
 - **Hinzufügen**: Umgebung hinzufügen in der Symbolleiste
 - **Umbenennen / Notizen / Löschen**: per Rechtsklick oder im rechten Detailbereich. Beim Löschen werden Daten in den Papierkorb verschoben
-- **Externe Links**: unter **Einstellungen -> Externe Links** die Zielumgebung wählen und BrowserIsolator als Standardbrowser setzen
-- **Einstellungen**: Chrome-Status, Datenordner, Erscheinungsbild, Sprache, Updates, Kontakt und Feedback öffnen
+- **Externe Links**: unter **Einstellungen -> Externe Links** die Zielumgebung wählen und BrowserIsolator als Standardbrowser setzen. Ist die Umgebung noch nicht bereit oder gibt es keine nutzbare Umgebung, lässt sich der Link kopieren; wenn keine Umgebung verfügbar ist, kann auch das Hauptfenster geöffnet werden
+- **Einstellungen**: Chrome-Status, Datenordner, Pfade kopieren, Chrome erneut laden, Erscheinungsbild, Sprache, Updates, Kontakt und Feedback öffnen. Chrome erneut laden ist nur verfügbar, wenn keine Umgebung startet, läuft oder gerade schließt
 - **Variationsmodus**: pro Umgebung in den Einstellungen aktivieren. Laufende Umgebungen können nicht geändert werden; erst schließen, dann beim nächsten Start wirksam
 - **Sprache wechseln**: Globus-Menü in Symbolleiste oder Menüleiste
 
@@ -86,10 +88,16 @@ Falls der automatische Download fehlschlägt, lade Google Chrome manuell herunte
 ~/Library/Application Support/BrowserIsolator/
 ├── config.json          # Umgebungen, Namen und Notizen
 ├── Chromium/
+│   └── Google Chrome.app/
 └── Profiles/
+    ├── p1/
+    ├── p2/
+    └── p3/
 ```
 
 Zum vollständigen Entfernen lösche diesen `BrowserIsolator`-Ordner.
+
+Wenn `config.json` beschädigt ist oder nicht gelesen werden kann, zeigt BrowserIsolator eine Warnung, lädt die Standardkonfiguration und versucht, die Originaldatei als `config.corrupt-<timestamp>.json` zu behalten.
 
 ## FAQ
 
@@ -111,7 +119,7 @@ Dieser Modus betrifft Chrome-Startparameter und CDP-Nutzung, daher kann er bei l
 
 ### Aktualisiert sich Chrome automatisch?
 
-Nein. Lösche zum Aktualisieren `~/Library/Application Support/BrowserIsolator/Chromium/` und starte die App erneut.
+Nein. Nutze zum Aktualisieren zuerst **Einstellungen -> Chrome erneut laden**. Alle Umgebungen müssen gestoppt sein und dürfen nicht starten oder schließen. Alternativ kannst du `~/Library/Application Support/BrowserIsolator/Chromium/` löschen und die App erneut starten.
 
 ### Aktualisiert sich BrowserIsolator automatisch?
 
@@ -119,4 +127,4 @@ Die App kann nach Updates suchen. Nutze „Nach Updates suchen“ in der Menüle
 
 ### Wie öffne ich Links aus anderen Apps in einer bestimmten Umgebung?
 
-Öffne **Einstellungen -> Externe Links**, wähle die Zielumgebung und klicke auf „Als Standardbrowser setzen“. Danach werden http/https-Links aus Mail, Chat-Apps, Notizen und anderen Apps an diese Umgebung weitergegeben. Ist die Browserumgebung noch nicht bereit, zeigt BrowserIsolator eine Meldung und bietet das Kopieren des Links an.
+Öffne **Einstellungen -> Externe Links**, wähle die Zielumgebung und klicke auf „Als Standardbrowser setzen“. Danach werden http/https-Links aus Mail, Chat-Apps, Notizen und anderen Apps an diese Umgebung weitergegeben. Ist die Browserumgebung noch nicht bereit oder gibt es keine nutzbare Umgebung, zeigt BrowserIsolator eine Meldung und bietet das Kopieren des Links an. Wenn keine Umgebung verfügbar ist, kann auch das Hauptfenster geöffnet werden.
