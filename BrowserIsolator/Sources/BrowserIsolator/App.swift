@@ -19,6 +19,7 @@ struct BrowserIsolatorApp: App {
         WindowGroup {
             MainView(manager: manager, l10n: localization, updater: updater)
                 .frame(minWidth: 680, idealWidth: 760, minHeight: 420)
+                .background(WindowFrameAutosaveView(name: "BrowserIsolator.mainWindow"))
                 .preferredColorScheme(preferredColorScheme)
                 .onAppear {
                     applyAppAppearance(AppAppearance(rawValue: appAppearance) ?? .system)
@@ -34,6 +35,24 @@ struct BrowserIsolatorApp: App {
             MenuBarView(manager: manager, l10n: localization, updater: updater)
         }
         .menuBarExtraStyle(.menu)
+    }
+}
+
+private struct WindowFrameAutosaveView: NSViewRepresentable {
+    let name: String
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            view.window?.setFrameAutosaveName(name)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            nsView.window?.setFrameAutosaveName(name)
+        }
     }
 }
 
@@ -224,6 +243,7 @@ struct MainView: View {
     @State private var deleteConfirmText: String = ""
     @State private var selectedProfileID: String?
     @State private var settingsWindowController: NSWindowController?
+    @AppStorage("MainSidebarWidth") private var mainSidebarWidth: Double = 360
     @AppStorage("ShowAdvancedDetails") private var showAdvancedDetails: Bool = false
 
     /// 运行中的环境排在前面
@@ -346,7 +366,12 @@ struct MainView: View {
                     .padding(.vertical, 10)
                 }
             }
-            .frame(minWidth: 340, idealWidth: 360)
+            .frame(minWidth: 340, idealWidth: CGFloat(mainSidebarWidth))
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: MainSidebarWidthPreferenceKey.self, value: proxy.size.width)
+                }
+            }
 
             ProfileInspectorView(
                 profile: selectedProfile,
@@ -373,6 +398,12 @@ struct MainView: View {
         .navigationTitle(l10n.t("app.name"))
         .onAppear { ensureSelection() }
         .onChange(of: manager.config.profiles.map(\.folder)) { _ in ensureSelection() }
+        .onPreferenceChange(MainSidebarWidthPreferenceKey.self) { width in
+            let clampedWidth = Double(min(max(width, 340), 560))
+            if abs(mainSidebarWidth - clampedWidth) > 1 {
+                mainSidebarWidth = clampedWidth
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -382,13 +413,10 @@ struct MainView: View {
                     renameText = ""
                     showRenameSheet = true
                 } label: {
-                    ToolbarSemanticLabel(
-                        title: l10n.t("toolbar.add"),
-                        systemImage: "plus",
-                        kind: .primary
-                    )
+                    Label(l10n.t("toolbar.add"), systemImage: "plus")
+                        .labelStyle(.titleAndIcon)
                 }
-                .buttonStyle(ToolbarSemanticButtonStyle(kind: .primary))
+                .buttonStyle(.bordered)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -580,6 +608,14 @@ private struct ToolbarSemanticLabel: View {
     }
 }
 
+private struct MainSidebarWidthPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 360
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 private struct ToolbarSemanticButtonStyle: ButtonStyle {
     enum Kind {
         case primary
@@ -595,6 +631,7 @@ private struct ToolbarSemanticButtonStyle: ButtonStyle {
             .font(.system(size: 12, weight: .semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
+            .frame(minHeight: 28)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(backgroundColor(isPressed: configuration.isPressed))
