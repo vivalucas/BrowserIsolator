@@ -536,7 +536,7 @@ struct MainView: View {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 690),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 720),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -746,37 +746,43 @@ struct ProfileRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(profileTitle(profile, l10n: l10n))
-                        .font(.system(size: 14, weight: isRunning ? .semibold : .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(profileTitle(profile, l10n: l10n))
+                            .font(.system(size: 14, weight: isRunning ? .semibold : .medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
 
-                    if hasError {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.red)
+                        if hasError {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.red)
+                        }
+                    }
+
+                    FlowMetaRow {
+                        Text(statusText)
+                            .foregroundStyle(statusColor)
+                        if let t = lastUsedText {
+                            MetaItem(systemImage: "clock", text: t)
+                        }
+                        if let s = sizeText {
+                            MetaItem(systemImage: "internaldrive", text: s)
+                        }
                     }
                 }
 
-                FlowMetaRow {
-                    Text(statusText)
-                        .foregroundStyle(statusColor)
-                    if let t = lastUsedText {
-                        MetaItem(systemImage: "clock", text: t)
-                    }
-                    if let s = sizeText {
-                        MetaItem(systemImage: "internaldrive", text: s)
-                    }
-                }
+                Spacer(minLength: 10)
             }
-
-            Spacer(minLength: 10)
+            .contentShape(Rectangle())
+            .background {
+                RowClickCatcher(onSingleClick: onSelect, onDoubleClick: onDoubleClick)
+            }
 
             if isStarting || isStopping {
                 ProgressView()
@@ -808,9 +814,6 @@ struct ProfileRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(isSelected ? selectionTint.opacity(0.28) : Color.clear, lineWidth: 1)
         }
-        .background {
-            RowClickCatcher(onSingleClick: onSelect, onDoubleClick: onDoubleClick)
-        }
         .animation(.easeInOut(duration: 0.12), value: isSelected)
     }
 }
@@ -836,13 +839,14 @@ private final class ClickCatcherView: NSView {
     var onSingleClick: (() -> Void)?
     var onDoubleClick: (() -> Void)?
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
     override func mouseDown(with event: NSEvent) {
-        switch event.clickCount {
-        case 1:
-            onSingleClick?()
-        case 2:
+        if event.clickCount >= 2 {
             onDoubleClick?()
-        default:
+        } else {
             onSingleClick?()
         }
     }
@@ -1392,8 +1396,17 @@ struct SettingsView: View {
                         SettingsLine(label: l10n.t("settings.chrome_version"), value: manager.chromeVersionText ?? l10n.t("settings.unknown"))
                         SettingsDivider()
                         SettingsButtonRow {
-                            Button(l10n.t("settings.open_chrome_folder")) { manager.openChromiumFolder() }
-                            Button(l10n.t("settings.redownload_chrome")) { manager.reinstallChromium() }
+                            Button {
+                                manager.openChromiumFolder()
+                            } label: {
+                                Label(l10n.t("settings.open_chrome_folder"), systemImage: "folder")
+                            }
+
+                            Button {
+                                manager.reinstallChromium()
+                            } label: {
+                                Label(l10n.t("settings.redownload_chrome"), systemImage: "arrow.clockwise")
+                            }
                                 .disabled(!manager.runningProfiles.isEmpty || !manager.stoppingProfiles.isEmpty || !manager.startingProfiles.isEmpty)
                         }
                     }
@@ -1402,9 +1415,23 @@ struct SettingsView: View {
                         SettingsLine(label: l10n.t("settings.data_path"), value: AppPaths.supportDir.path)
                         SettingsDivider()
                         SettingsButtonRow {
-                            Button(l10n.t("settings.open_data_folder")) { manager.openSupportFolder() }
-                            Button(l10n.t("settings.open_profiles_folder")) { manager.openProfilesFolder() }
-                            Button(l10n.t("settings.copy_path")) { manager.copySupportPath() }
+                            Button {
+                                manager.openSupportFolder()
+                            } label: {
+                                Label(l10n.t("settings.open_data_folder"), systemImage: "folder")
+                            }
+
+                            Button {
+                                manager.openProfilesFolder()
+                            } label: {
+                                Label(l10n.t("settings.open_profiles_folder"), systemImage: "person.crop.rectangle.stack")
+                            }
+
+                            Button {
+                                manager.copySupportPath()
+                            } label: {
+                                Label(l10n.t("settings.copy_path"), systemImage: "doc.on.doc")
+                            }
                         }
                     }
 
@@ -1430,7 +1457,7 @@ struct SettingsView: View {
                             } label: {
                                 Label(l10n.t("settings.set_default_browser"), systemImage: "safari")
                             }
-                                .buttonStyle(.borderedProminent)
+                                .buttonStyle(SettingsActionButtonStyle(isProminent: true))
                                 .disabled(manager.config.profiles.isEmpty)
                         }
                     }
@@ -1453,7 +1480,6 @@ struct SettingsView: View {
                             } label: {
                                 Label(l10n.t("settings.fingerprint_manage"), systemImage: "slider.horizontal.3")
                             }
-                            .buttonStyle(.bordered)
                         }
                     }
 
@@ -1505,7 +1531,6 @@ struct SettingsView: View {
                             } label: {
                                 Label(l10n.t("settings.copy_email"), systemImage: "doc.on.doc")
                             }
-                            .buttonStyle(.bordered)
                         }
                         SettingsDivider()
 
@@ -1515,17 +1540,17 @@ struct SettingsView: View {
                             } label: {
                                 Label(l10n.t("settings.open_issues"), systemImage: "bubble.left.and.bubble.right")
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(SettingsActionButtonStyle())
                         }
                     }
                 }
-                .padding(.horizontal, 26)
-                .padding(.vertical, 22)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
             }
         }
         .ignoresSafeArea(.container, edges: .top)
         .background(Color(nsColor: .windowBackgroundColor))
-        .frame(width: 620, height: 690)
+        .frame(width: 680, height: 720)
         .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
         .onAppear {
             applyAppAppearance(AppAppearance(rawValue: appAppearance) ?? .system)
@@ -1580,16 +1605,23 @@ struct SettingsView: View {
     }
 
     private var settingsHeader: some View {
-        ZStack {
-            Text(l10n.t("settings.title"))
-                .font(.system(size: 14, weight: .semibold))
-            HStack {
-                settingsCloseButton
-                Spacer()
+        HStack(spacing: 12) {
+            settingsCloseButton
+
+            Label {
+                Text(l10n.t("settings.title"))
+                    .font(.system(size: 15, weight: .semibold))
+            } icon: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
             }
+
+            Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 9)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -1819,7 +1851,7 @@ struct SettingsSection<Content: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 18) {
+        VStack(alignment: .leading, spacing: 12) {
             Label {
                 Text(title)
             } icon: {
@@ -1833,22 +1865,20 @@ struct SettingsSection<Content: View>: View {
                 }
                 .frame(width: 22, height: 22)
             }
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .frame(width: 118, alignment: .leading)
-            .padding(.top, 10)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.primary)
 
             VStack(alignment: .leading, spacing: 0) {
                 content
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.46))
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.58))
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
             }
         }
     }
@@ -1867,12 +1897,13 @@ struct SettingsControlRow<Content: View>: View {
         HStack(alignment: .center, spacing: 12) {
             Text(label)
                 .foregroundStyle(.secondary)
-                .frame(width: 118, alignment: .leading)
+                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
             Spacer(minLength: 12)
             content
+                .frame(maxWidth: SettingsMetrics.controlWidth, alignment: .trailing)
         }
         .font(.system(size: 12))
-        .frame(minHeight: 32)
+        .frame(minHeight: SettingsMetrics.rowHeight)
     }
 }
 
@@ -1881,12 +1912,16 @@ struct SettingsToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
+        HStack(alignment: .center, spacing: 12) {
             Text(label)
                 .foregroundStyle(.secondary)
+                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
+            Spacer(minLength: 12)
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
         }
         .font(.system(size: 12))
-        .frame(minHeight: 32)
+        .frame(minHeight: SettingsMetrics.rowHeight)
     }
 }
 
@@ -1898,18 +1933,28 @@ struct SettingsButtonRow<Content: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            content
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                content
+            }
+
+            VStack(alignment: .trailing, spacing: 8) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .controlSize(.small)
-        .frame(minHeight: 32, alignment: .leading)
+        .labelStyle(.titleAndIcon)
+        .buttonStyle(SettingsActionButtonStyle())
+        .controlSize(.regular)
+        .frame(minHeight: SettingsMetrics.rowHeight, alignment: .trailing)
     }
 }
 
 struct SettingsDivider: View {
     var body: some View {
         Divider()
-            .padding(.leading, 118)
+            .padding(.leading, SettingsMetrics.labelWidth + 12)
     }
 }
 
@@ -1921,14 +1966,62 @@ struct SettingsLine: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(label)
                 .foregroundStyle(.secondary)
-                .frame(width: 118, alignment: .leading)
+                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
             Text(value)
                 .textSelection(.enabled)
-                .lineLimit(2)
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .multilineTextAlignment(.trailing)
             Spacer(minLength: 0)
         }
         .font(.system(size: 12))
-        .frame(minHeight: 32)
+        .frame(minHeight: SettingsMetrics.rowHeight)
+    }
+}
+
+private enum SettingsMetrics {
+    static let labelWidth: CGFloat = 150
+    static let controlWidth: CGFloat = 260
+    static let rowHeight: CGFloat = 36
+}
+
+struct SettingsActionButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    var isProminent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .medium))
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .frame(minWidth: 144, maxWidth: 210)
+            .frame(minHeight: 30)
+            .padding(.horizontal, 10)
+            .foregroundStyle(foregroundColor)
+            .background {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(backgroundColor(configuration: configuration))
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1 : 0.5)
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    private var foregroundColor: Color {
+        isProminent ? .white : .primary
+    }
+
+    private var borderColor: Color {
+        isProminent ? Color.accentColor.opacity(0.0) : Color.primary.opacity(0.10)
+    }
+
+    private func backgroundColor(configuration: Configuration) -> Color {
+        if isProminent {
+            return Color.accentColor.opacity(configuration.isPressed ? 0.76 : 0.92)
+        }
+        return Color(nsColor: .controlBackgroundColor).opacity(configuration.isPressed ? 0.95 : 0.70)
     }
 }
 
