@@ -1406,23 +1406,21 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     SettingsSection(title: l10n.t("settings.browser"), systemImage: "globe") {
-                        SettingsLine(label: l10n.t("settings.chrome_status"), value: manager.chromiumReady ? l10n.t("settings.ready") : l10n.t("settings.not_installed"))
-                        SettingsDivider()
-                        SettingsLine(label: l10n.t("settings.chrome_version"), value: manager.chromeVersionText ?? l10n.t("settings.unknown"))
-                        SettingsDivider()
-                        SettingsButtonRow {
+                        SettingsLineActionRow(label: l10n.t("settings.chrome_status"), value: manager.chromiumReady ? l10n.t("settings.ready") : l10n.t("settings.not_installed")) {
                             Button {
                                 manager.openChromiumFolder()
                             } label: {
                                 Label(l10n.t("settings.open_chrome_folder"), systemImage: "folder")
                             }
-
+                        }
+                        SettingsDivider()
+                        SettingsLineActionRow(label: l10n.t("settings.chrome_version"), value: manager.chromeVersionText ?? l10n.t("settings.unknown")) {
                             Button {
                                 showRedownloadChromeConfirm = true
                             } label: {
                                 Label(l10n.t("settings.redownload_chrome"), systemImage: "arrow.clockwise")
                             }
-                                .disabled(!manager.runningProfiles.isEmpty || !manager.stoppingProfiles.isEmpty || !manager.startingProfiles.isEmpty)
+                            .disabled(!manager.runningProfiles.isEmpty || !manager.stoppingProfiles.isEmpty || !manager.startingProfiles.isEmpty)
                         }
                     }
 
@@ -1451,7 +1449,7 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: l10n.t("settings.external_links"), systemImage: "link") {
-                        SettingsControlRow(label: l10n.t("settings.open_to")) {
+                        SettingsControlActionRow(label: l10n.t("settings.open_to")) {
                             if manager.config.profiles.isEmpty {
                                 Text(l10n.t("settings.unknown"))
                                     .foregroundStyle(.secondary)
@@ -1462,18 +1460,16 @@ struct SettingsView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
-                                .frame(width: 230, alignment: .leading)
+                                .frame(width: 210, alignment: .leading)
                             }
-                        }
-                        SettingsDivider()
-                        SettingsButtonRow {
+                        } action: {
                             Button {
                                 manager.setAsDefaultBrowser()
                             } label: {
                                 Label(l10n.t("settings.set_default_browser"), systemImage: "safari")
                             }
-                                .buttonStyle(SettingsActionButtonStyle(isProminent: true))
-                                .disabled(manager.config.profiles.isEmpty)
+                            .buttonStyle(SettingsActionButtonStyle(isProminent: true))
+                            .disabled(manager.config.profiles.isEmpty)
                         }
                     }
 
@@ -1484,12 +1480,10 @@ struct SettingsView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.vertical, 7)
                         Divider()
-                        SettingsLine(
+                        SettingsLineActionRow(
                             label: l10n.t("settings.fingerprint_profiles"),
                             value: l10n.format("settings.fingerprint_summary", fingerprintEnabledCount, manager.config.profiles.count)
-                        )
-                        SettingsDivider()
-                        SettingsButtonRow {
+                        ) {
                             Button {
                                 showFingerprintManager = true
                             } label: {
@@ -1519,9 +1513,7 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: l10n.t("settings.about_support"), systemImage: "questionmark.circle") {
-                        SettingsLine(label: l10n.t("settings.app_version"), value: manager.currentVersion)
-                        SettingsDivider()
-                        SettingsButtonRow {
+                        SettingsLineActionRow(label: l10n.t("settings.app_version"), value: manager.currentVersion) {
                             Button {
                                 updater.checkForUpdates()
                             } label: {
@@ -1539,8 +1531,7 @@ struct SettingsView: View {
 
                         SettingsLine(label: l10n.t("settings.author"), value: "Lucas")
                         SettingsDivider()
-                        SettingsLine(label: l10n.t("settings.email"), value: manager.contactEmail)
-                        SettingsButtonRow {
+                        SettingsLineActionRow(label: l10n.t("settings.email"), value: manager.contactEmail) {
                             Button {
                                 manager.copyContactEmail()
                             } label: {
@@ -1931,6 +1922,35 @@ struct SettingsControlRow<Content: View>: View {
     }
 }
 
+struct SettingsControlActionRow<Content: View, Action: View>: View {
+    let label: String
+    let content: Content
+    let action: Action
+
+    init(label: String, @ViewBuilder content: () -> Content, @ViewBuilder action: () -> Action) {
+        self.label = label
+        self.content = content()
+        self.action = action()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
+            content
+                .frame(maxWidth: SettingsMetrics.inlineControlWidth, alignment: .leading)
+            action
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 12))
+        .labelStyle(.titleAndIcon)
+        .buttonStyle(SettingsActionButtonStyle())
+        .controlSize(.regular)
+        .frame(minHeight: SettingsMetrics.rowHeight)
+    }
+}
+
 struct SettingsToggleRow: View {
     let label: String
     @Binding var isOn: Bool
@@ -2004,9 +2024,46 @@ struct SettingsLine: View {
     }
 }
 
+struct SettingsLineActionRow<Action: View>: View {
+    let label: String
+    let value: String
+    let action: Action
+
+    init(label: String, value: String, @ViewBuilder action: () -> Action) {
+        self.label = label
+        self.value = value
+        self.action = action()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
+            Text(value)
+                .textSelection(.enabled)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+            HStack(spacing: 8) {
+                action
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 12))
+        .labelStyle(.titleAndIcon)
+        .buttonStyle(SettingsActionButtonStyle())
+        .controlSize(.regular)
+        .frame(minHeight: SettingsMetrics.rowHeight)
+    }
+}
+
 private enum SettingsMetrics {
     static let labelWidth: CGFloat = 150
     static let controlWidth: CGFloat = 260
+    static let inlineControlWidth: CGFloat = 210
     static let rowHeight: CGFloat = 36
 }
 
@@ -2016,12 +2073,12 @@ struct SettingsActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .medium))
+            .font(.system(size: 11.5, weight: .medium))
             .lineLimit(2)
             .multilineTextAlignment(.center)
-            .frame(minWidth: 144, maxWidth: 210)
-            .frame(minHeight: 30)
-            .padding(.horizontal, 10)
+            .frame(minWidth: 112, maxWidth: 176)
+            .frame(minHeight: 28)
+            .padding(.horizontal, 9)
             .foregroundStyle(foregroundColor)
             .background {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
