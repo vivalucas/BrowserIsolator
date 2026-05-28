@@ -9,7 +9,7 @@ BrowserIsolator verfolgt ein klares Ziel: lokale Browser-Umgebungen zuverlässig
 ## Funktionen
 
 - **Isolierte Umgebungen**: jede Umgebung nutzt ein eigenes Chrome-Datenverzeichnis
-- **Schnelle Steuerung**: Starten, Schließen und Alle schließen im Hauptfenster oder in der Menüleiste; ein Doppelklick auf eine Umgebungszeile startet sie, und beim Schließen wartet die App auf das Ende von Chrome
+- **Schnelle Steuerung**: Starten, Schließen und Alle schließen im Hauptfenster oder in der Menüleiste; ein weiterer Klick auf eine ausgewählte Umgebungszeile startet sie, und beim Schließen wartet die App auf das Ende von Chrome
 - **Umgebungsdetails**: die linke Liste zeigt Status, Speicherplatz und letzte Nutzung; der rechte Detailbereich zeigt Profilpfad, Ausführungsmodus, Fehler, Aktionen und erweiterte Details. Debug-Ports erscheinen nur bei Bedarf in den erweiterten Details
 - **Eigene Namen und Notizen**: Umgebungen benennen und kurze Notizen für Konto, Kunde oder Zweck hinterlegen
 - **Sicheres Löschen**: beim Löschen muss der Umgebungsname eingegeben werden; die Daten werden in den Papierkorb verschoben

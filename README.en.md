@@ -9,7 +9,7 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 ## Features
 
 - **Isolated environments**: each environment uses its own Chrome data directory, keeping login state, cookies, cache, and extension settings separate
-- **One-click control**: start or close environments from the main panel or menu bar, double-click an environment row to start it, and close all environments at once; closing waits for Chrome to exit so profile locks are released cleanly
+- **Quick control**: start or close environments from the main panel or menu bar, click a selected environment row again to start it, and close all environments at once; closing waits for Chrome to exit so profile locks are released cleanly
 - **Environment details**: the main list focuses on name, status, disk usage, and last-used time; the right-side inspector shows profile path, run mode, actions, and advanced details. Debug ports appear only in advanced details when applicable
 - **Custom names and notes**: name a new environment immediately after creating it, rename it later, or add a short note for account, client, or workflow details
 - **Safe deletion**: deleting an environment requires typing its name, then its profile data is moved to Trash
@@ -114,7 +114,7 @@ Then reopen BrowserIsolator.
 
 ## Usage
 
-- **Start**: click Start on an environment row, double-click the environment row, or use the right-side inspector; if Chrome is unavailable, the port is busy, or the profile is locked, the error appears in the inspector
+- **Start**: click Start on an environment row, click a selected environment row again, or use the right-side inspector; if Chrome is unavailable, the port is busy, or the profile is locked, the error appears in the inspector
 - **Close**: click Close on a running environment; the row briefly shows Closing until Chrome exits
 - **Close all**: use Close All in the toolbar; the app waits for all environments to exit
 - **Add**: click Add Environment in the toolbar

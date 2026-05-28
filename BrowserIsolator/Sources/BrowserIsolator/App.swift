@@ -322,15 +322,14 @@ struct MainView: View {
                                         manager.startProfile(profile)
                                     }
                                 },
-                                onSelect: {
-                                    selectedProfileID = profile.folder
-                                },
-                                onDoubleClick: {
-                                    selectedProfileID = profile.folder
-                                    if !manager.runningProfiles.contains(profile.folder),
+                                onCardClick: {
+                                    if selectedProfileID == profile.folder,
+                                       !manager.runningProfiles.contains(profile.folder),
                                        !manager.startingProfiles.contains(profile.folder),
                                        !manager.stoppingProfiles.contains(profile.folder) {
                                         manager.startProfile(profile)
+                                    } else {
+                                        selectedProfileID = profile.folder
                                     }
                                 }
                             )
@@ -707,8 +706,7 @@ struct ProfileRow: View {
     let hasError: Bool
     @ObservedObject var l10n: Localization
     let onToggle: () -> Void
-    let onSelect: () -> Void
-    let onDoubleClick: () -> Void
+    let onCardClick: () -> Void
 
     static let sizeFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
@@ -780,9 +778,7 @@ struct ProfileRow: View {
                 Spacer(minLength: 10)
             }
             .contentShape(Rectangle())
-            .background {
-                RowClickCatcher(onSingleClick: onSelect, onDoubleClick: onDoubleClick)
-            }
+            .onTapGesture(perform: onCardClick)
 
             if isStarting || isStopping {
                 ProgressView()
@@ -792,14 +788,14 @@ struct ProfileRow: View {
                 Button(role: .destructive, action: onToggle) {
                     Image(systemName: "stop.fill")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(ProfileRowActionButtonStyle(kind: .stop))
                 .controlSize(.small)
                 .help(l10n.t("common.close"))
             } else {
                 Button(action: onToggle) {
                     Image(systemName: "play.fill")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ProfileRowActionButtonStyle(kind: .start))
                 .controlSize(.small)
                 .help(l10n.t("common.start"))
             }
@@ -818,36 +814,54 @@ struct ProfileRow: View {
     }
 }
 
-private struct RowClickCatcher: NSViewRepresentable {
-    let onSingleClick: () -> Void
-    let onDoubleClick: () -> Void
-
-    func makeNSView(context: Context) -> ClickCatcherView {
-        let view = ClickCatcherView()
-        view.onSingleClick = onSingleClick
-        view.onDoubleClick = onDoubleClick
-        return view
+private struct ProfileRowActionButtonStyle: ButtonStyle {
+    enum Kind {
+        case start
+        case stop
     }
 
-    func updateNSView(_ nsView: ClickCatcherView, context: Context) {
-        nsView.onSingleClick = onSingleClick
-        nsView.onDoubleClick = onDoubleClick
+    @Environment(\.isEnabled) private var isEnabled
+    let kind: Kind
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 11, weight: .semibold))
+            .frame(width: 28, height: 24)
+            .foregroundStyle(foregroundColor)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(backgroundColor(isPressed: configuration.isPressed))
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1 : 0.5)
+            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
-}
 
-private final class ClickCatcherView: NSView {
-    var onSingleClick: (() -> Void)?
-    var onDoubleClick: (() -> Void)?
-
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        true
+    private var foregroundColor: Color {
+        switch kind {
+        case .start:
+            return .white
+        case .stop:
+            return .red
+        }
     }
 
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount >= 2 {
-            onDoubleClick?()
-        } else {
-            onSingleClick?()
+    private var borderColor: Color {
+        switch kind {
+        case .start:
+            return Color.accentColor.opacity(0.0)
+        case .stop:
+            return Color.primary.opacity(0.10)
+        }
+    }
+
+    private func backgroundColor(isPressed: Bool) -> Color {
+        switch kind {
+        case .start:
+            return Color.accentColor.opacity(isPressed ? 0.74 : 0.92)
+        case .stop:
+            return Color(nsColor: .controlBackgroundColor).opacity(isPressed ? 0.95 : 0.72)
         }
     }
 }
@@ -1379,6 +1393,7 @@ struct SettingsView: View {
     @AppStorage("AppAppearance") private var appAppearance: String = AppAppearance.system.rawValue
     @AppStorage("DefaultOpenProfileFolder") private var defaultOpenProfileFolder: String = ""
     @State private var showFingerprintManager = false
+    @State private var showRedownloadChromeConfirm = false
 
     private var fingerprintEnabledCount: Int {
         manager.config.profiles.filter(\.fingerprintEnabled).count
@@ -1403,7 +1418,7 @@ struct SettingsView: View {
                             }
 
                             Button {
-                                manager.reinstallChromium()
+                                showRedownloadChromeConfirm = true
                             } label: {
                                 Label(l10n.t("settings.redownload_chrome"), systemImage: "arrow.clockwise")
                             }
@@ -1557,6 +1572,15 @@ struct SettingsView: View {
         }
         .onChange(of: appAppearance) { newValue in
             applyAppAppearance(AppAppearance(rawValue: newValue) ?? .system)
+        }
+        .alert(l10n.t("settings.redownload_confirm_title"), isPresented: $showRedownloadChromeConfirm) {
+            Button(l10n.t("common.cancel"), role: .cancel) {}
+            Button(l10n.t("settings.redownload_chrome"), role: .destructive) {
+                manager.reinstallChromium()
+            }
+            .disabled(!manager.runningProfiles.isEmpty || !manager.stoppingProfiles.isEmpty || !manager.startingProfiles.isEmpty)
+        } message: {
+            Text(l10n.t("settings.redownload_confirm_message"))
         }
         .alert(item: $manager.updateAlert) { alert in
             switch alert {
@@ -1898,9 +1922,9 @@ struct SettingsControlRow<Content: View>: View {
             Text(label)
                 .foregroundStyle(.secondary)
                 .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
-            Spacer(minLength: 12)
             content
-                .frame(maxWidth: SettingsMetrics.controlWidth, alignment: .trailing)
+                .frame(maxWidth: SettingsMetrics.controlWidth, alignment: .leading)
+            Spacer(minLength: 0)
         }
         .font(.system(size: 12))
         .frame(minHeight: SettingsMetrics.rowHeight)
@@ -1916,9 +1940,9 @@ struct SettingsToggleRow: View {
             Text(label)
                 .foregroundStyle(.secondary)
                 .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
-            Spacer(minLength: 12)
             Toggle("", isOn: $isOn)
                 .labelsHidden()
+            Spacer(minLength: 0)
         }
         .font(.system(size: 12))
         .frame(minHeight: SettingsMetrics.rowHeight)
@@ -1935,19 +1959,19 @@ struct SettingsButtonRow<Content: View>: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
-                Spacer(minLength: 0)
                 content
+                Spacer(minLength: 0)
             }
 
-            VStack(alignment: .trailing, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
                 content
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .labelStyle(.titleAndIcon)
         .buttonStyle(SettingsActionButtonStyle())
         .controlSize(.regular)
-        .frame(minHeight: SettingsMetrics.rowHeight, alignment: .trailing)
+        .frame(minHeight: SettingsMetrics.rowHeight, alignment: .leading)
     }
 }
 
@@ -1971,8 +1995,8 @@ struct SettingsLine: View {
                 .textSelection(.enabled)
                 .foregroundStyle(.primary)
                 .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
         }
         .font(.system(size: 12))

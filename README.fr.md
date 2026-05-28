@@ -9,7 +9,7 @@ BrowserIsolator a un objectif précis : isoler proprement les environnements de 
 ## Fonctionnalités
 
 - **Environnements isolés** : chaque environnement utilise son propre dossier de données Chrome
-- **Contrôle rapide** : démarrer, fermer ou tout fermer depuis le panneau principal ou la barre de menus ; un double-clic sur une ligne d'environnement le démarre, et la fermeture attend que Chrome quitte
+- **Contrôle rapide** : démarrer, fermer ou tout fermer depuis le panneau principal ou la barre de menus ; un second clic sur une ligne d'environnement sélectionnée la démarre, et la fermeture attend que Chrome quitte
 - **Informations d'environnement** : la liste de gauche montre l'état, l'espace disque et la dernière utilisation ; le panneau de droite affiche le chemin du profil, le mode d'exécution, les erreurs, les actions et les détails avancés. Le port de débogage apparaît seulement au besoin dans les détails avancés
 - **Noms et notes** : nommer les environnements et ajouter une courte note pour un compte, un client ou un usage
 - **Suppression sûre** : la suppression demande de saisir le nom de l'environnement, puis déplace les données dans la corbeille
@@ -72,7 +72,7 @@ Si le téléchargement automatique échoue, téléchargez Google Chrome manuelle
 
 ## Utilisation
 
-- **Démarrer** : cliquez sur Démarrer dans une ligne d'environnement, double-cliquez sur la ligne ou utilisez le panneau de détails à droite ; une erreur s'affiche en cas d'échec
+- **Démarrer** : cliquez sur Démarrer dans une ligne d'environnement, cliquez à nouveau sur la ligne sélectionnée ou utilisez le panneau de détails à droite ; une erreur s'affiche en cas d'échec
 - **Fermer** : cliquez sur Fermer pour un environnement en cours ; l'état Fermeture reste affiché jusqu'à la sortie de Chrome
 - **Tout fermer** : utilisez Tout fermer dans la barre d'outils
 - **Ajouter** : cliquez sur Ajouter un environnement
