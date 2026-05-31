@@ -71,6 +71,8 @@ private struct WindowFrameAutosaveView: NSViewRepresentable {
 
     @MainActor
     final class Coordinator {
+        private static let frameKeyPrefix = "WindowFrame."
+
         private weak var window: NSWindow?
         private var autosaveName: String?
         private var restoredWindowID: ObjectIdentifier?
@@ -86,14 +88,15 @@ private struct WindowFrameAutosaveView: NSViewRepresentable {
                 addObservers(for: window, name: name)
             }
 
-            window.setFrameAutosaveName(name)
             guard restoredWindowID != windowID else { return }
             restoredWindowID = windowID
-            _ = window.setFrameUsingName(name, force: true)
-            window.setFrameAutosaveName(name)
+            restoreFrame(for: window, name: name)
         }
 
         func detach() {
+            if let window, let autosaveName {
+                Self.saveFrame(for: window, name: autosaveName)
+            }
             removeObservers()
             window = nil
             autosaveName = nil
@@ -104,22 +107,105 @@ private struct WindowFrameAutosaveView: NSViewRepresentable {
             let center = NotificationCenter.default
             let notifications: [Notification.Name] = [
                 NSWindow.didMoveNotification,
+                NSWindow.didResizeNotification,
                 NSWindow.didEndLiveResizeNotification,
                 NSWindow.willCloseNotification
             ]
             observers = notifications.map { notification in
                 center.addObserver(forName: notification, object: window, queue: .main) { [weak window] _ in
                     Task { @MainActor in
-                        window?.saveFrame(usingName: name)
+                        if let window {
+                            Self.saveFrame(for: window, name: name)
+                        }
                     }
                 }
             }
+            observers.append(
+                center.addObserver(forName: NSApplication.willTerminateNotification, object: NSApp, queue: .main) { [weak window] _ in
+                    Task { @MainActor in
+                        if let window {
+                            Self.saveFrame(for: window, name: name)
+                        }
+                    }
+                }
+            )
         }
 
         private func removeObservers() {
             let center = NotificationCenter.default
             observers.forEach(center.removeObserver)
             observers.removeAll()
+        }
+
+        private func restoreFrame(for window: NSWindow, name: String) {
+            guard let frame = Self.storedFrame(for: name),
+                  Self.isUsableFrame(frame) else { return }
+
+            apply(frame, to: window)
+            Task { @MainActor in
+                await Self.restoreAfterLayout(frame, to: window)
+            }
+        }
+
+        private func apply(_ frame: NSRect, to window: NSWindow) {
+            let constrainedFrame = Self.constrainedFrame(frame, for: window)
+            window.setFrame(constrainedFrame, display: true)
+        }
+
+        private static func restoreAfterLayout(_ frame: NSRect, to window: NSWindow) async {
+            let delays: [UInt64] = [0, 80_000_000, 220_000_000]
+            for delay in delays {
+                if delay > 0 {
+                    try? await Task.sleep(nanoseconds: delay)
+                } else {
+                    await Task.yield()
+                }
+                guard window.isVisible || window.contentView != nil else { continue }
+                let constrainedFrame = constrainedFrame(frame, for: window)
+                if !window.frame.equalTo(constrainedFrame) {
+                    window.setFrame(constrainedFrame, display: true)
+                }
+            }
+        }
+
+        private static func saveFrame(for window: NSWindow, name: String) {
+            guard !window.frame.isEmpty else { return }
+            UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: frameKey(for: name))
+        }
+
+        private static func storedFrame(for name: String) -> NSRect? {
+            guard let value = UserDefaults.standard.string(forKey: frameKey(for: name)) else { return nil }
+            let frame = NSRectFromString(value)
+            return frame.isEmpty ? nil : frame
+        }
+
+        private static func frameKey(for name: String) -> String {
+            frameKeyPrefix + name
+        }
+
+        private static func isUsableFrame(_ frame: NSRect) -> Bool {
+            guard frame.width >= 680, frame.height >= 420 else { return false }
+            return NSScreen.screens.contains { screen in
+                screen.visibleFrame.intersects(frame)
+            }
+        }
+
+        private static func constrainedFrame(_ frame: NSRect, for window: NSWindow) -> NSRect {
+            let minSize = window.minSize
+            var constrained = frame
+            constrained.size.width = max(constrained.width, minSize.width, 680)
+            constrained.size.height = max(constrained.height, minSize.height, 420)
+
+            guard let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(constrained) }) ?? NSScreen.main else {
+                return constrained
+            }
+
+            let visibleFrame = screen.visibleFrame
+            constrained.size.width = min(constrained.width, visibleFrame.width)
+            constrained.size.height = min(constrained.height, visibleFrame.height)
+            constrained.origin.x = min(max(constrained.minX, visibleFrame.minX), visibleFrame.maxX - constrained.width)
+            constrained.origin.y = min(max(constrained.minY, visibleFrame.minY), visibleFrame.maxY - constrained.height)
+            return constrained
         }
     }
 }
