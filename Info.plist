@@ -43,9 +43,9 @@
         </dict>
     </array>
     <key>CFBundleShortVersionString</key>
-    <string>1.7.9</string>
+    <string>1.7.10</string>
     <key>CFBundleVersion</key>
-    <string>36</string>
+    <string>37</string>
     <key>SUFeedURL</key>
     <string>https://github.com/vivalucas/BrowserIsolator/releases/latest/download/appcast.xml</string>
     <key>SUPublicEDKey</key>
