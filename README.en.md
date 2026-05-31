@@ -11,6 +11,7 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 - **Isolated environments**: each environment uses its own Chrome data directory, keeping login state, cookies, cache, and extension settings separate
 - **Quick control**: start or close environments from the main panel or menu bar, click a selected environment row again to start it, and close all environments at once; closing waits for Chrome to exit so profile locks are released cleanly
 - **Environment details**: the main list focuses on name, status, disk usage, and last-used time; the right-side inspector shows profile path, run mode, actions, and advanced details. Debug ports appear only in advanced details when applicable
+- **Remembered layout**: the main window size, position, and sidebar width are restored the next time the app opens
 - **Custom names and notes**: name a new environment immediately after creating it, rename it later, or add a short note for account, client, or workflow details
 - **Safe deletion**: deleting an environment requires typing its name, then its profile data is moved to Trash
 - **Basic Mode by default**: isolates profile data without a debug port or page script injection, keeping behavior close to normal Chrome

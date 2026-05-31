@@ -11,6 +11,7 @@ BrowserIsolator a un objectif précis : isoler proprement les environnements de 
 - **Environnements isolés** : chaque environnement utilise son propre dossier de données Chrome
 - **Contrôle rapide** : démarrer, fermer ou tout fermer depuis le panneau principal ou la barre de menus ; un second clic sur une ligne d'environnement sélectionnée la démarre, et la fermeture attend que Chrome quitte
 - **Informations d'environnement** : la liste de gauche montre l'état, l'espace disque et la dernière utilisation ; le panneau de droite affiche le chemin du profil, le mode d'exécution, les erreurs, les actions et les détails avancés. Le port de débogage apparaît seulement au besoin dans les détails avancés
+- **Disposition mémorisée** : la taille et la position de la fenêtre principale, ainsi que la largeur de la barre latérale, sont restaurées à la prochaine ouverture
 - **Noms et notes** : nommer les environnements et ajouter une courte note pour un compte, un client ou un usage
 - **Suppression sûre** : la suppression demande de saisir le nom de l'environnement, puis déplace les données dans la corbeille
 - **Mode de base par défaut** : seul le profil est isolé, sans port de débogage ni injection de script dans les pages

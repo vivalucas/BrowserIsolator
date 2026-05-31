@@ -41,17 +41,85 @@ struct BrowserIsolatorApp: App {
 private struct WindowFrameAutosaveView: NSViewRepresentable {
     let name: String
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
         DispatchQueue.main.async {
-            view.window?.setFrameAutosaveName(name)
+            if let window = view.window {
+                context.coordinator.attach(to: window, name: name)
+            }
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
-            nsView.window?.setFrameAutosaveName(name)
+            if let window = nsView.window {
+                context.coordinator.attach(to: window, name: name)
+            }
+        }
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        Task { @MainActor in
+            coordinator.detach()
+        }
+    }
+
+    @MainActor
+    final class Coordinator {
+        private weak var window: NSWindow?
+        private var autosaveName: String?
+        private var restoredWindowID: ObjectIdentifier?
+        private var observers: [NSObjectProtocol] = []
+
+        func attach(to window: NSWindow, name: String) {
+            let windowID = ObjectIdentifier(window)
+            if self.window !== window || autosaveName != name {
+                removeObservers()
+                self.window = window
+                autosaveName = name
+                restoredWindowID = nil
+                addObservers(for: window, name: name)
+            }
+
+            window.setFrameAutosaveName(name)
+            guard restoredWindowID != windowID else { return }
+            restoredWindowID = windowID
+            _ = window.setFrameUsingName(name, force: true)
+            window.setFrameAutosaveName(name)
+        }
+
+        func detach() {
+            removeObservers()
+            window = nil
+            autosaveName = nil
+            restoredWindowID = nil
+        }
+
+        private func addObservers(for window: NSWindow, name: String) {
+            let center = NotificationCenter.default
+            let notifications: [Notification.Name] = [
+                NSWindow.didMoveNotification,
+                NSWindow.didEndLiveResizeNotification,
+                NSWindow.willCloseNotification
+            ]
+            observers = notifications.map { notification in
+                center.addObserver(forName: notification, object: window, queue: .main) { [weak window] _ in
+                    Task { @MainActor in
+                        window?.saveFrame(usingName: name)
+                    }
+                }
+            }
+        }
+
+        private func removeObservers() {
+            let center = NotificationCenter.default
+            observers.forEach(center.removeObserver)
+            observers.removeAll()
         }
     }
 }
@@ -246,6 +314,10 @@ struct MainView: View {
     @AppStorage("MainSidebarWidth") private var mainSidebarWidth: Double = 360
     @AppStorage("ShowAdvancedDetails") private var showAdvancedDetails: Bool = false
 
+    private let sidebarMinWidth: CGFloat = 340
+    private let sidebarMaxWidth: CGFloat = 560
+    private let inspectorMinWidth: CGFloat = 300
+
     /// 运行中的环境排在前面
     private var sortedProfiles: [Profile] {
         let running = manager.config.profiles
@@ -283,126 +355,135 @@ struct MainView: View {
 
     @ViewBuilder
     private var profileList: some View {
-        HSplitView {
-            ScrollView {
-                if sortedProfiles.isEmpty {
-                    VStack(spacing: 16) {
-                        Spacer()
-                        Image(systemName: "macwindow.on.rectangle")
-                            .font(.system(size: 44))
-                            .foregroundStyle(.tertiary)
-                        Text(l10n.t("empty.title"))
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        Text(l10n.t("empty.subtitle"))
-                            .font(.system(size: 14))
-                            .foregroundStyle(.tertiary)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 360)
-                } else {
-                    LazyVStack(spacing: 6) {
-                        ForEach(sortedProfiles) { profile in
-                            ProfileRow(
-                                profile: profile,
-                                isSelected: selectedProfileID == profile.folder,
-                                isRunning: manager.runningProfiles.contains(profile.folder),
-                                isStarting: manager.startingProfiles.contains(profile.folder),
-                                isStopping: manager.stoppingProfiles.contains(profile.folder),
-                                diskSize: manager.profileSizes[profile.folder],
-                                lastUsed: manager.profileLastUsed[profile.folder],
-                                hasError: manager.profileErrors[profile.folder] != nil,
-                                l10n: l10n,
-                                onToggle: {
-                                    selectedProfileID = profile.folder
-                                    if manager.runningProfiles.contains(profile.folder) {
-                                        manager.stopProfile(profile)
-                                    } else {
-                                        manager.startProfile(profile)
+        GeometryReader { proxy in
+            let sidebarWidth = resolvedSidebarWidth(for: proxy.size.width)
+
+            HStack(spacing: 0) {
+                ScrollView {
+                    if sortedProfiles.isEmpty {
+                        VStack(spacing: 16) {
+                            Spacer()
+                            Image(systemName: "macwindow.on.rectangle")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.tertiary)
+                            Text(l10n.t("empty.title"))
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            Text(l10n.t("empty.subtitle"))
+                                .font(.system(size: 14))
+                                .foregroundStyle(.tertiary)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 360)
+                    } else {
+                        LazyVStack(spacing: 6) {
+                            ForEach(sortedProfiles) { profile in
+                                ProfileRow(
+                                    profile: profile,
+                                    isSelected: selectedProfileID == profile.folder,
+                                    isRunning: manager.runningProfiles.contains(profile.folder),
+                                    isStarting: manager.startingProfiles.contains(profile.folder),
+                                    isStopping: manager.stoppingProfiles.contains(profile.folder),
+                                    diskSize: manager.profileSizes[profile.folder],
+                                    lastUsed: manager.profileLastUsed[profile.folder],
+                                    hasError: manager.profileErrors[profile.folder] != nil,
+                                    l10n: l10n,
+                                    onToggle: {
+                                        selectedProfileID = profile.folder
+                                        if manager.runningProfiles.contains(profile.folder) {
+                                            manager.stopProfile(profile)
+                                        } else {
+                                            manager.startProfile(profile)
+                                        }
+                                    },
+                                    onCardClick: {
+                                        if selectedProfileID == profile.folder,
+                                           !manager.runningProfiles.contains(profile.folder),
+                                           !manager.startingProfiles.contains(profile.folder),
+                                           !manager.stoppingProfiles.contains(profile.folder) {
+                                            manager.startProfile(profile)
+                                        } else {
+                                            selectedProfileID = profile.folder
+                                        }
                                     }
-                                },
-                                onCardClick: {
-                                    if selectedProfileID == profile.folder,
-                                       !manager.runningProfiles.contains(profile.folder),
+                                )
+                                .contentShape(Rectangle())
+                                .contextMenu {
+                                    Button(l10n.t("context.rename")) {
+                                        renameTarget = profile
+                                        renameText = profile.displayName
+                                        showRenameSheet = true
+                                    }
+                                    if !manager.runningProfiles.contains(profile.folder),
                                        !manager.startingProfiles.contains(profile.folder),
                                        !manager.stoppingProfiles.contains(profile.folder) {
-                                        manager.startProfile(profile)
-                                    } else {
-                                        selectedProfileID = profile.folder
+                                        Button(l10n.t("context.note")) {
+                                            noteTarget = profile
+                                            noteText = profile.note
+                                            showNoteSheet = true
+                                        }
                                     }
-                                }
-                            )
-                            .contentShape(Rectangle())
-                            .contextMenu {
-                                Button(l10n.t("context.rename")) {
-                                    renameTarget = profile
-                                    renameText = profile.displayName
-                                    showRenameSheet = true
-                                }
-                                if !manager.runningProfiles.contains(profile.folder),
-                                   !manager.startingProfiles.contains(profile.folder),
-                                   !manager.stoppingProfiles.contains(profile.folder) {
-                                    Button(l10n.t("context.note")) {
-                                        noteTarget = profile
-                                        noteText = profile.note
-                                        showNoteSheet = true
-                                    }
-                                }
-                                if !manager.runningProfiles.contains(profile.folder),
-                                   !manager.startingProfiles.contains(profile.folder),
-                                   !manager.stoppingProfiles.contains(profile.folder) {
-                                    Divider()
-                                    Button(l10n.t("context.delete"), role: .destructive) {
-                                        showDeleteConfirm = profile
-                                        deleteConfirmText = ""
+                                    if !manager.runningProfiles.contains(profile.folder),
+                                       !manager.startingProfiles.contains(profile.folder),
+                                       !manager.stoppingProfiles.contains(profile.folder) {
+                                        Divider()
+                                        Button(l10n.t("context.delete"), role: .destructive) {
+                                            showDeleteConfirm = profile
+                                            deleteConfirmText = ""
+                                        }
                                     }
                                 }
                             }
                         }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 10)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 10)
                 }
-            }
-            .frame(minWidth: 340, idealWidth: CGFloat(mainSidebarWidth))
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(key: MainSidebarWidthPreferenceKey.self, value: proxy.size.width)
-                }
-            }
+                .frame(width: sidebarWidth)
 
-            ProfileInspectorView(
-                profile: selectedProfile,
-                manager: manager,
-                l10n: l10n,
-                showAdvancedDetails: showAdvancedDetails,
-                onRename: { profile in
-                    renameTarget = profile
-                    renameText = profile.displayName
-                    showRenameSheet = true
-                },
-                onNote: { profile in
-                    noteTarget = profile
-                    noteText = profile.note
-                    showNoteSheet = true
-                },
-                onDelete: { profile in
-                    showDeleteConfirm = profile
-                    deleteConfirmText = ""
-                }
-            )
-            .frame(minWidth: 300, idealWidth: 340)
+                MainSplitDivider(
+                    currentWidth: sidebarWidth,
+                    minWidth: sidebarMinWidth,
+                    maxWidth: sidebarMaximumWidth(for: proxy.size.width),
+                    onWidthChange: { width in
+                        setSidebarWidth(width, totalWidth: proxy.size.width)
+                    }
+                )
+
+                ProfileInspectorView(
+                    profile: selectedProfile,
+                    manager: manager,
+                    l10n: l10n,
+                    showAdvancedDetails: showAdvancedDetails,
+                    onRename: { profile in
+                        renameTarget = profile
+                        renameText = profile.displayName
+                        showRenameSheet = true
+                    },
+                    onNote: { profile in
+                        noteTarget = profile
+                        noteText = profile.note
+                        showNoteSheet = true
+                    },
+                    onDelete: { profile in
+                        showDeleteConfirm = profile
+                        deleteConfirmText = ""
+                    }
+                )
+                .frame(minWidth: inspectorMinWidth, maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear {
+                clampStoredSidebarWidth(for: proxy.size.width)
+            }
+            .onChange(of: proxy.size.width) { newWidth in
+                clampStoredSidebarWidth(for: newWidth)
+            }
         }
         .navigationTitle(l10n.t("app.name"))
         .onAppear { ensureSelection() }
         .onChange(of: manager.config.profiles.map(\.folder)) { _ in ensureSelection() }
-        .onPreferenceChange(MainSidebarWidthPreferenceKey.self) { width in
-            let clampedWidth = Double(min(max(width, 340), 560))
-            if abs(mainSidebarWidth - clampedWidth) > 1 {
-                mainSidebarWidth = clampedWidth
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -527,6 +608,25 @@ struct MainView: View {
         }
     }
 
+    private func sidebarMaximumWidth(for totalWidth: CGFloat) -> CGFloat {
+        max(sidebarMinWidth, min(sidebarMaxWidth, totalWidth - inspectorMinWidth))
+    }
+
+    private func resolvedSidebarWidth(for totalWidth: CGFloat) -> CGFloat {
+        min(max(CGFloat(mainSidebarWidth), sidebarMinWidth), sidebarMaximumWidth(for: totalWidth))
+    }
+
+    private func setSidebarWidth(_ width: CGFloat, totalWidth: CGFloat) {
+        let clampedWidth = min(max(width, sidebarMinWidth), sidebarMaximumWidth(for: totalWidth))
+        if abs(CGFloat(mainSidebarWidth) - clampedWidth) > 0.5 {
+            mainSidebarWidth = Double(clampedWidth)
+        }
+    }
+
+    private func clampStoredSidebarWidth(for totalWidth: CGFloat) {
+        setSidebarWidth(CGFloat(mainSidebarWidth), totalWidth: totalWidth)
+    }
+
     private func openSettingsWindow() {
         if let window = settingsWindowController?.window, window.isVisible {
             NSApp.activate(ignoringOtherApps: true)
@@ -607,11 +707,53 @@ private struct ToolbarSemanticLabel: View {
     }
 }
 
-private struct MainSidebarWidthPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 360
+private struct MainSplitDivider: View {
+    let currentWidth: CGFloat
+    let minWidth: CGFloat
+    let maxWidth: CGFloat
+    let onWidthChange: (CGFloat) -> Void
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+    @State private var dragStartWidth: CGFloat?
+    @State private var cursorIsPushed = false
+
+    var body: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(width: 1)
+            .overlay {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 9)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if dragStartWidth == nil {
+                                    dragStartWidth = currentWidth
+                                }
+                                let startWidth = dragStartWidth ?? currentWidth
+                                onWidthChange(min(max(startWidth + value.translation.width, minWidth), maxWidth))
+                            }
+                            .onEnded { _ in
+                                dragStartWidth = nil
+                            }
+                    )
+            }
+            .onHover { hovering in
+                if hovering && !cursorIsPushed {
+                    NSCursor.resizeLeftRight.push()
+                    cursorIsPushed = true
+                } else if !hovering && cursorIsPushed {
+                    NSCursor.pop()
+                    cursorIsPushed = false
+                }
+            }
+            .onDisappear {
+                if cursorIsPushed {
+                    NSCursor.pop()
+                    cursorIsPushed = false
+                }
+            }
     }
 }
 
