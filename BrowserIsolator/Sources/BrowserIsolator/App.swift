@@ -31,10 +31,54 @@ struct BrowserIsolatorApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 760, height: 520)
 
-        MenuBarExtra("", systemImage: manager.runningProfiles.isEmpty ? "macwindow.on.rectangle" : "macwindow.badge.plus") {
+        MenuBarExtra {
             MenuBarView(manager: manager, l10n: localization, updater: updater)
+        } label: {
+            MenuBarStatusIcon(isRunning: !manager.runningProfiles.isEmpty)
         }
         .menuBarExtraStyle(.menu)
+    }
+}
+
+private struct MenuBarStatusIcon: View {
+    let isRunning: Bool
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 3.6, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.94))
+                RoundedRectangle(cornerRadius: 3.6, style: .continuous)
+                    .strokeBorder(Color.black.opacity(0.82), lineWidth: 1.35)
+
+                VStack(spacing: 2.2) {
+                    Capsule()
+                        .fill(Color.black.opacity(0.54))
+                        .frame(width: 7.5, height: 1.25)
+                    Capsule()
+                        .fill(Color.black.opacity(0.32))
+                        .frame(width: 10, height: 1.1)
+                }
+            }
+            .frame(width: 15.5, height: 12.5)
+            .shadow(color: .white.opacity(0.78), radius: 0.7, x: 0, y: 0)
+            .shadow(color: .black.opacity(0.36), radius: 1.3, x: 0, y: 0.5)
+
+            if isRunning {
+                ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.88))
+                        .frame(width: 7.6, height: 7.6)
+                    Image(systemName: "plus")
+                        .font(.system(size: 5, weight: .bold))
+                        .foregroundStyle(Color(nsColor: .controlBackgroundColor))
+                }
+                .offset(x: 1.2, y: 1.2)
+                .shadow(color: .white.opacity(0.75), radius: 0.6, x: 0, y: 0)
+            }
+        }
+        .frame(width: 22, height: 18)
+        .accessibilityLabel("BrowserIsolator")
     }
 }
 
@@ -1427,6 +1471,7 @@ struct DetailLine: View {
 
 struct LanguageMenu: View {
     @ObservedObject var l10n: Localization
+    var displayTitle: String?
 
     var body: some View {
         Menu {
@@ -1442,7 +1487,7 @@ struct LanguageMenu: View {
                 }
             }
         } label: {
-            Label(l10n.t("language"), systemImage: "globe")
+            Label(displayTitle ?? l10n.t("language"), systemImage: "globe")
                 .labelStyle(.titleAndIcon)
         }
     }
@@ -1785,7 +1830,7 @@ struct SettingsView: View {
 
                     SettingsSection(title: l10n.t("settings.preferences"), systemImage: "slider.horizontal.3") {
                         SettingsControlRow(label: l10n.t("language")) {
-                            LanguageMenu(l10n: l10n)
+                            LanguageMenu(l10n: l10n, displayTitle: l10n.language.nativeName)
                         }
                         SettingsDivider()
 
