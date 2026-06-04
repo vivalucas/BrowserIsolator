@@ -34,51 +34,80 @@ struct BrowserIsolatorApp: App {
         MenuBarExtra {
             MenuBarView(manager: manager, l10n: localization, updater: updater)
         } label: {
-            MenuBarStatusIcon(isRunning: !manager.runningProfiles.isEmpty)
+            Image(nsImage: MenuBarStatusIconImage.image(isRunning: !manager.runningProfiles.isEmpty))
+                .interpolation(.high)
+                .accessibilityLabel("BrowserIsolator")
         }
         .menuBarExtraStyle(.menu)
     }
 }
 
-private struct MenuBarStatusIcon: View {
-    let isRunning: Bool
+@MainActor
+private enum MenuBarStatusIconImage {
+    private static let idle = makeImage(isRunning: false)
+    private static let running = makeImage(isRunning: true)
 
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 3.6, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.94))
-                RoundedRectangle(cornerRadius: 3.6, style: .continuous)
-                    .strokeBorder(Color.black.opacity(0.82), lineWidth: 1.35)
+    static func image(isRunning: Bool) -> NSImage {
+        isRunning ? running : idle
+    }
 
-                VStack(spacing: 2.2) {
-                    Capsule()
-                        .fill(Color.black.opacity(0.54))
-                        .frame(width: 7.5, height: 1.25)
-                    Capsule()
-                        .fill(Color.black.opacity(0.32))
-                        .frame(width: 10, height: 1.1)
-                }
-            }
-            .frame(width: 15.5, height: 12.5)
-            .shadow(color: .white.opacity(0.78), radius: 0.7, x: 0, y: 0)
-            .shadow(color: .black.opacity(0.36), radius: 1.3, x: 0, y: 0.5)
+    private static func makeImage(isRunning: Bool) -> NSImage {
+        let size = NSSize(width: 22, height: 18)
+        let image = NSImage(size: size)
+        image.isTemplate = false
+        image.lockFocus()
 
-            if isRunning {
-                ZStack {
-                    Circle()
-                        .fill(Color.black.opacity(0.88))
-                        .frame(width: 7.6, height: 7.6)
-                    Image(systemName: "plus")
-                        .font(.system(size: 5, weight: .bold))
-                        .foregroundStyle(Color(nsColor: .controlBackgroundColor))
-                }
-                .offset(x: 1.2, y: 1.2)
-                .shadow(color: .white.opacity(0.75), radius: 0.6, x: 0, y: 0)
-            }
+        NSGraphicsContext.current?.imageInterpolation = .high
+
+        let bodyRect = NSRect(x: 3.2, y: 4.1, width: 15.6, height: 11.8)
+        let bodyPath = NSBezierPath(roundedRect: bodyRect, xRadius: 3.4, yRadius: 3.4)
+
+        NSColor.white.withAlphaComponent(0.72).setStroke()
+        bodyPath.lineWidth = 2.2
+        bodyPath.stroke()
+
+        NSColor.black.withAlphaComponent(0.20).setStroke()
+        let shadowPath = NSBezierPath(roundedRect: bodyRect.insetBy(dx: -0.4, dy: -0.4), xRadius: 3.8, yRadius: 3.8)
+        shadowPath.lineWidth = 1.8
+        shadowPath.stroke()
+
+        NSColor(calibratedWhite: 0.92, alpha: 0.96).setFill()
+        bodyPath.fill()
+
+        NSColor.black.withAlphaComponent(0.86).setStroke()
+        bodyPath.lineWidth = 1.35
+        bodyPath.stroke()
+
+        NSColor.black.withAlphaComponent(0.52).setFill()
+        NSBezierPath(roundedRect: NSRect(x: 7.2, y: 10.0, width: 7.6, height: 1.35), xRadius: 0.7, yRadius: 0.7).fill()
+        NSColor.black.withAlphaComponent(0.34).setFill()
+        NSBezierPath(roundedRect: NSRect(x: 5.8, y: 7.2, width: 10.4, height: 1.2), xRadius: 0.6, yRadius: 0.6).fill()
+
+        if isRunning {
+            let badgeRect = NSRect(x: 13.5, y: 2.0, width: 7.9, height: 7.9)
+            let badgePath = NSBezierPath(ovalIn: badgeRect)
+
+            NSColor.white.withAlphaComponent(0.76).setStroke()
+            badgePath.lineWidth = 1.8
+            badgePath.stroke()
+
+            NSColor.black.withAlphaComponent(0.88).setFill()
+            badgePath.fill()
+
+            NSColor(calibratedWhite: 0.92, alpha: 0.98).setStroke()
+            let center = NSPoint(x: badgeRect.midX, y: badgeRect.midY)
+            let plus = NSBezierPath()
+            plus.move(to: NSPoint(x: center.x - 2.0, y: center.y))
+            plus.line(to: NSPoint(x: center.x + 2.0, y: center.y))
+            plus.move(to: NSPoint(x: center.x, y: center.y - 2.0))
+            plus.line(to: NSPoint(x: center.x, y: center.y + 2.0))
+            plus.lineWidth = 1.05
+            plus.lineCapStyle = .round
+            plus.stroke()
         }
-        .frame(width: 22, height: 18)
-        .accessibilityLabel("BrowserIsolator")
+
+        image.unlockFocus()
+        return image
     }
 }
 
