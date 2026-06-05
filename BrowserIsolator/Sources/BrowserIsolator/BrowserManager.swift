@@ -239,6 +239,7 @@ class BrowserManager: ObservableObject {
             "--test-type"
         ]
         if let debugPort {
+            arguments.append("--remote-debugging-address=127.0.0.1")
             arguments.append("--remote-debugging-port=\(debugPort)")
         }
         arguments.append(contentsOf: additionalArguments)
@@ -309,13 +310,21 @@ class BrowserManager: ObservableObject {
         let stoppedFolders = Array(runningProfiles)
         let processesToStop = processes
         stoppingProfiles.formUnion(stoppedFolders)
-        for (_, process) in processesToStop where process.isRunning {
+        let runningProcesses = processesToStop.compactMap { _, process -> (Process, pid_t)? in
             process.terminationHandler = nil
-            kill(process.processIdentifier, SIGTERM)
+            guard process.isRunning else { return nil }
+            return (process, process.processIdentifier)
+        }
+        for (_, pid) in runningProcesses {
+            kill(pid, SIGTERM)
         }
         Task { [weak self] in
-            for (_, process) in processesToStop where process.isRunning {
-                await Self.waitForProcessExit(process, pid: process.processIdentifier, timeout: 5)
+            await withTaskGroup(of: Void.self) { group in
+                for (process, pid) in runningProcesses {
+                    group.addTask {
+                        await Self.waitForProcessExit(process, pid: pid, timeout: 5)
+                    }
+                }
             }
             self?.finishStoppedProfiles(stoppedFolders)
         }
