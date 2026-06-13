@@ -68,7 +68,7 @@ class BrowserManager: ObservableObject {
     @Published var configLoadAlert: ConfigLoadAlert?
     @Published var configSaveAlert: ConfigSaveAlert?
     private var profileScanGeneration: UInt64 = 0
-    private var profileSizeCache: [String: ProfileSizeCacheEntry] = [:]
+
 
     @Published var updateAlert: UpdateAlert?
     @Published var showQuitConfirm: Bool = false
@@ -103,10 +103,7 @@ class BrowserManager: ObservableObject {
         let message: String
     }
 
-    private struct ProfileSizeCacheEntry {
-        let directoryModificationDate: Date?
-        let size: Int64
-    }
+
 
     var chromiumExePath: String {
         AppPaths.chromiumDir
@@ -253,7 +250,7 @@ class BrowserManager: ObservableObject {
     }
 
     /// 从首选端口开始查找可用端口，最多尝试 10 个
-    private nonisolated func findAvailablePort(preferred: Int) throws -> Int {
+    private func findAvailablePort(preferred: Int) throws -> Int {
         for offset in 0..<10 {
             let port = preferred + offset
             if isPortAvailable(port) { return port }
@@ -261,7 +258,8 @@ class BrowserManager: ObservableObject {
         throw BrowserError.noAvailablePort(preferred: preferred, range: 10)
     }
 
-    private nonisolated func isPortAvailable(_ port: Int) -> Bool {
+    private func isPortAvailable(_ port: Int) -> Bool {
+        if debugPorts.values.contains(port) { return false }
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = UInt16(port).bigEndian
@@ -360,17 +358,19 @@ class BrowserManager: ObservableObject {
         for (_, pid) in running {
             kill(pid, SIGTERM)
         }
-        let group = DispatchGroup()
-        for (process, _) in running {
-            group.enter()
-            DispatchQueue.global().async {
-                process.waitUntilExit()
-                group.leave()
+        for _ in 0..<50 { // 50 * 0.1s = 5s
+            var allDead = true
+            for (_, pid) in running {
+                if kill(pid, 0) == 0 { // 检查进程是否存在
+                    allDead = false
+                    break
+                }
             }
+            if allDead { break }
+            Thread.sleep(forTimeInterval: 0.1)
         }
-        if group.wait(timeout: .now() + 5) == .timedOut {
-            // 超时未退出的进程强制杀死
-            for (process, pid) in running where process.isRunning {
+        for (_, pid) in running {
+            if kill(pid, 0) == 0 {
                 kill(pid, SIGKILL)
             }
         }
@@ -391,7 +391,7 @@ class BrowserManager: ObservableObject {
         runningProfiles.remove(folder)
         stoppingProfiles.remove(folder)
         profileLastUsed[folder] = Date()
-        profileSizeCache.removeValue(forKey: folder)
+
         scanProfileInfo()
         return true
     }
@@ -407,7 +407,7 @@ class BrowserManager: ObservableObject {
             runningProfiles.remove(folder)
             stoppingProfiles.remove(folder)
             profileLastUsed[folder] = now
-            profileSizeCache.removeValue(forKey: folder)
+
             changed = true
         }
         if changed {
@@ -433,7 +433,7 @@ class BrowserManager: ObservableObject {
         config.profiles.append(profile)
         let dir = AppPaths.profilesDir.appendingPathComponent(folder)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        profileSizeCache.removeValue(forKey: folder)
+
         saveConfig()
         scanProfileInfo()
         return profile
@@ -462,7 +462,7 @@ class BrowserManager: ObservableObject {
         config.profiles.removeAll { $0.folder == profile.folder }
         profileSizes.removeValue(forKey: profile.folder)
         profileLastUsed.removeValue(forKey: profile.folder)
-        profileSizeCache.removeValue(forKey: profile.folder)
+
         profileErrors.removeValue(forKey: profile.folder)
         saveConfig()
         scanProfileInfo()
@@ -782,6 +782,13 @@ class BrowserManager: ObservableObject {
         do {
             try fm.createDirectory(at: targetDir, withIntermediateDirectories: true)
             try fm.copyItem(at: sourceApp, to: targetApp)
+            
+            let xattrProcess = Process()
+            xattrProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+            xattrProcess.arguments = ["-dr", "com.apple.quarantine", targetApp.path]
+            try? xattrProcess.run()
+            xattrProcess.waitUntilExit()
+
             try validateChromiumExecutable()
             // 安装成功，删除备份
             try? fm.removeItem(at: backupDir)
@@ -842,15 +849,11 @@ class BrowserManager: ObservableObject {
     /// 启动时扫描各环境的磁盘占用和最后使用时间
     private func scanProfileInfo() {
         let folders = config.profiles.map { $0.folder }
-        let folderSet = Set(folders)
-        let activeFolders = runningProfiles.union(startingProfiles).union(stoppingProfiles)
-        let sizeCacheSnapshot = profileSizeCache
         profileScanGeneration &+= 1
         let generation = profileScanGeneration
         Task.detached(priority: .utility) { [weak self] in
             var sizes: [String: Int64] = [:]
             var lastUsed: [String: Date] = [:]
-            var nextSizeCache = sizeCacheSnapshot
 
             for folder in folders {
                 let isCurrentGeneration = await MainActor.run { [weak self] in
@@ -868,19 +871,9 @@ class BrowserManager: ObservableObject {
                     lastUsed[folder] = nil
                 }
 
-                let modificationDate = lastUsed[folder]
-                if !activeFolders.contains(folder),
-                   let cached = sizeCacheSnapshot[folder],
-                   cached.directoryModificationDate == modificationDate {
-                    sizes[folder] = cached.size
-                } else {
-                    let size = Self.directorySize(at: dirPath)
-                    sizes[folder] = size
-                    nextSizeCache[folder] = ProfileSizeCacheEntry(
-                        directoryModificationDate: modificationDate,
-                        size: size
-                    )
-                }
+                // 直接重算目录大小，不依赖 modificationDate 做不可靠的深层变更缓存
+                let size = Self.directorySize(at: dirPath)
+                sizes[folder] = size
             }
 
             await MainActor.run { [weak self] in
@@ -895,7 +888,6 @@ class BrowserManager: ObservableObject {
                 }
                 self.profileSizes = sizes
                 self.profileLastUsed = lastUsed
-                self.profileSizeCache = nextSizeCache.filter { folderSet.contains($0.key) }
             }
         }
     }

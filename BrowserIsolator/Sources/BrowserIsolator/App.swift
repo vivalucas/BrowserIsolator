@@ -660,6 +660,7 @@ struct MainView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 10)
+                        .animation(.default, value: sortedProfiles.map(\.folder))
                     }
                 }
                 .frame(width: sidebarWidth)
@@ -794,14 +795,14 @@ struct MainView: View {
             }
             Button(l10n.t("common.delete"), role: .destructive) {
                 if let p = showDeleteConfirm,
-                   deleteConfirmText.trimmingCharacters(in: .whitespacesAndNewlines) == deleteConfirmationKeyword {
+                   deleteConfirmText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == deleteConfirmationKeyword.lowercased() {
                     manager.moveProfileToTrash(p)
                 }
                 showDeleteConfirm = nil
                 deleteConfirmText = ""
             }
             .disabled(
-                deleteConfirmText.trimmingCharacters(in: .whitespacesAndNewlines) != deleteConfirmationKeyword
+                deleteConfirmText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != deleteConfirmationKeyword.lowercased()
             )
         } message: {
             if let p = showDeleteConfirm {

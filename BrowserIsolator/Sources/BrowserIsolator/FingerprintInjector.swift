@@ -127,7 +127,9 @@ actor FingerprintInjector {
         for attempt in 1...15 {
             if disconnected { throw InjectorError.connectionClosed }
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 2.0
+                let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
                 let version = try JSONDecoder().decode(CDPVersion.self, from: data)
                 guard let browserURL = URL(string: version.webSocketDebuggerUrl) else {
@@ -151,7 +153,9 @@ actor FingerprintInjector {
     private func pollPageTargets() async throws -> [CDPTarget] {
         let url = URL(string: "http://127.0.0.1:\(debugPort)/json")!
         if disconnected { throw InjectorError.connectionClosed }
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2.0
+        let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw InjectorError.noPageTargets
         }
