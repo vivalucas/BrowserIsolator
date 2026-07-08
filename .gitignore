@@ -22,3 +22,6 @@ project-log/
 # IDE
 .vscode/
 .idea/
+# Additional AI tools
+.mimocode/
+.agents/
