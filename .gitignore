@@ -10,3 +10,15 @@ CLAUDE.md
 .claude/
 DEBUG.md
 project-log/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
