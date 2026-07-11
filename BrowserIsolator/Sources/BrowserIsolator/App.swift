@@ -561,7 +561,7 @@ struct MainView: View {
         .alert(item: $manager.configLoadAlert) { alert in
             Alert(
                 title: Text(l10n.t("config_load.title")),
-                message: Text(alert.backupPath.map { l10n.format("config_load.message_with_backup", $0) } ?? l10n.t("config_load.message")),
+                message: Text(configLoadMessage(alert)),
                 dismissButton: .default(Text(l10n.t("common.confirm")))
             )
         }
@@ -573,6 +573,18 @@ struct MainView: View {
             )
         }
         .externalLinkAlert(manager: manager, l10n: l10n)
+    }
+
+    private func configLoadMessage(_ alert: ConfigLoadAlert) -> String {
+        let key: String
+        switch alert.recovery {
+        case .backup: key = "config_load.recovered_backup"
+        case .disk: key = "config_load.recovered_disk"
+        case .defaults: key = "config_load.recovered_defaults"
+        }
+        let message = l10n.t(key)
+        guard let path = alert.backupPath else { return message }
+        return "\(message)\n\n\(l10n.format("config_load.corrupt_path", path))"
     }
 
     @ViewBuilder
@@ -1421,7 +1433,10 @@ struct ProfileInspectorView: View {
     }
 
     private func runModeText(for profile: Profile) -> String {
-        profile.fingerprintEnabled ? l10n.t("settings.variation_mode") : l10n.t("settings.basic_mode")
+        if profile.fingerprintEnabled && profile.collectorDebugEnabled { return l10n.t("settings.collector_variation_mode") }
+        if profile.fingerprintEnabled { return l10n.t("settings.variation_mode") }
+        if profile.collectorDebugEnabled { return l10n.t("settings.collector_mode") }
+        return l10n.t("settings.basic_mode")
     }
 
     private func fingerprintValues(for profile: Profile) -> (cores: Int, memory: Int) {
@@ -1765,6 +1780,10 @@ struct SettingsView: View {
         manager.config.profiles.filter(\.fingerprintEnabled).count
     }
 
+    private var collectorEnabledCount: Int {
+        manager.config.profiles.filter(\.collectorDebugEnabled).count
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             settingsHeader
@@ -1839,8 +1858,8 @@ struct SettingsView: View {
                         }
                     }
 
-                    SettingsSection(title: l10n.t("settings.fingerprint_mode"), systemImage: "cpu") {
-                        Text(l10n.t("settings.fingerprint_hint"))
+                    SettingsSection(title: l10n.t("settings.environment_modes"), systemImage: "cpu") {
+                        Text(l10n.t("settings.environment_modes_hint"))
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1848,12 +1867,12 @@ struct SettingsView: View {
                         Divider()
                         SettingsLineActionRow(
                             label: l10n.t("settings.fingerprint_profiles"),
-                            value: l10n.format("settings.fingerprint_summary", fingerprintEnabledCount, manager.config.profiles.count)
+                            value: l10n.format("settings.environment_modes_summary", collectorEnabledCount, fingerprintEnabledCount, manager.config.profiles.count)
                         ) {
                             Button {
                                 showFingerprintManager = true
                             } label: {
-                                Label(l10n.t("settings.fingerprint_manage"), systemImage: "slider.horizontal.3")
+                                Label(l10n.t("settings.environment_modes_manage"), systemImage: "slider.horizontal.3")
                             }
                         }
                     }
@@ -2077,10 +2096,10 @@ struct FingerprintModeManagerView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
-                Text(l10n.t("settings.fingerprint_manage_title"))
+                Text(l10n.t("settings.environment_modes_manage_title"))
                     .font(.system(size: 16, weight: .semibold))
 
-                Text(l10n.t("settings.fingerprint_manage_description"))
+                Text(l10n.t("settings.environment_modes_manage_description"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2106,6 +2125,17 @@ struct FingerprintModeManagerView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
+
+                HStack {
+                    Button(l10n.t("settings.collector_enable_all")) {
+                        manager.updateCollectorDebugEnabled(for: filteredProfiles, isEnabled: true)
+                    }
+                    Button(l10n.t("settings.collector_disable_all")) {
+                        manager.updateCollectorDebugEnabled(for: filteredProfiles, isEnabled: false)
+                    }
+                    Spacer()
+                }
+                .controlSize(.small)
             }
             .padding(.horizontal, 22)
             .padding(.top, 22)
@@ -2182,8 +2212,18 @@ struct FingerprintModeRow: View {
         )
     }
 
+    private var collectorBinding: Binding<Bool> {
+        Binding(
+            get: { manager.config.profiles.first(where: { $0.folder == profile.folder })?.collectorDebugEnabled ?? false },
+            set: { manager.updateCollectorDebugEnabled(for: profile, isEnabled: $0) }
+        )
+    }
+
     private var currentModeText: String {
-        fingerprintBinding.wrappedValue ? l10n.t("settings.variation_mode") : l10n.t("settings.basic_mode")
+        if fingerprintBinding.wrappedValue && collectorBinding.wrappedValue { return l10n.t("settings.collector_variation_mode") }
+        if fingerprintBinding.wrappedValue { return l10n.t("settings.variation_mode") }
+        if collectorBinding.wrappedValue { return l10n.t("settings.collector_mode") }
+        return l10n.t("settings.basic_mode")
     }
 
     private var stateText: String {
@@ -2210,13 +2250,16 @@ struct FingerprintModeRow: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 12)
-            Toggle("", isOn: fingerprintBinding)
-                .labelsHidden()
-                .disabled(isLocked)
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(l10n.t("settings.collector_mode"), isOn: collectorBinding)
+                Toggle(l10n.t("settings.variation_mode"), isOn: fingerprintBinding)
+            }
+            .toggleStyle(.checkbox)
+            .disabled(isLocked)
         }
         .font(.system(size: 12))
         .frame(minHeight: 42)
-        .help(l10n.t("settings.fingerprint_hint"))
+        .help(l10n.t("settings.environment_modes_hint"))
     }
 }
 

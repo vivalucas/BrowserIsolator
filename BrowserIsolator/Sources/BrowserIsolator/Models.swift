@@ -6,12 +6,16 @@ struct Profile: Codable, Identifiable {
     var displayName: String
     var note: String
     var fingerprintEnabled: Bool
+    var collectorDebugEnabled: Bool
+    var lastUsed: Date?
 
-    init(folder: String, displayName: String, note: String = "", fingerprintEnabled: Bool = false) {
+    init(folder: String, displayName: String, note: String = "", fingerprintEnabled: Bool = false, collectorDebugEnabled: Bool = false, lastUsed: Date? = nil) {
         self.folder = folder
         self.displayName = displayName
         self.note = note
         self.fingerprintEnabled = fingerprintEnabled
+        self.collectorDebugEnabled = collectorDebugEnabled
+        self.lastUsed = lastUsed
     }
 
     var instanceNumber: Int {
@@ -31,6 +35,8 @@ struct Profile: Codable, Identifiable {
         case displayName
         case note
         case fingerprintEnabled
+        case collectorDebugEnabled
+        case lastUsed
     }
 
     init(from decoder: Decoder) throws {
@@ -39,6 +45,8 @@ struct Profile: Codable, Identifiable {
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? ""
         note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
         fingerprintEnabled = try container.decodeIfPresent(Bool.self, forKey: .fingerprintEnabled) ?? false
+        collectorDebugEnabled = try container.decodeIfPresent(Bool.self, forKey: .collectorDebugEnabled) ?? false
+        lastUsed = try container.decodeIfPresent(Date.self, forKey: .lastUsed)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -47,6 +55,8 @@ struct Profile: Codable, Identifiable {
         try container.encode(displayName, forKey: .displayName)
         try container.encode(note, forKey: .note)
         try container.encode(fingerprintEnabled, forKey: .fingerprintEnabled)
+        try container.encode(collectorDebugEnabled, forKey: .collectorDebugEnabled)
+        try container.encodeIfPresent(lastUsed, forKey: .lastUsed)
     }
 }
 
@@ -68,7 +78,14 @@ struct ConfigLoadResult {
 }
 
 struct ConfigLoadAlert: Identifiable {
+    enum Recovery {
+        case backup
+        case disk
+        case defaults
+    }
+
     let id = UUID()
+    let recovery: Recovery
     let backupPath: String?
 }
 
@@ -80,6 +97,7 @@ struct AppPaths {
     }()
 
     static var configFile: URL { supportDir.appendingPathComponent("config.json") }
+    static var configBackupFile: URL { supportDir.appendingPathComponent("config.json.bak") }
     static var profilesDir: URL { supportDir.appendingPathComponent("Profiles") }
     static var chromiumDir: URL { supportDir.appendingPathComponent("Chromium") }
 
@@ -98,30 +116,74 @@ class ConfigStore {
     }
 
     func load() -> ConfigLoadResult {
-        guard let data = try? Data(contentsOf: configURL) else {
-            if FileManager.default.fileExists(atPath: configURL.path) {
-                return ConfigLoadResult(config: .default, alert: ConfigLoadAlert(backupPath: nil))
-            }
-            return ConfigLoadResult(config: .default, alert: nil)
-        }
-        if let config = try? JSONDecoder().decode(AppConfig.self, from: data) {
+        if let config = decodeConfig(at: configURL) {
             return ConfigLoadResult(config: config, alert: nil)
         }
 
-        if FileManager.default.fileExists(atPath: configURL.path) {
+        let mainFileExists = FileManager.default.fileExists(atPath: configURL.path)
+        var corruptPath: String?
+        if mainFileExists {
             let backupName = "config.corrupt-\(Int(Date().timeIntervalSince1970)).json"
             let backupURL = configURL.deletingLastPathComponent().appendingPathComponent(backupName)
             try? FileManager.default.removeItem(at: backupURL)
             if (try? FileManager.default.moveItem(at: configURL, to: backupURL)) != nil {
-                return ConfigLoadResult(config: .default, alert: ConfigLoadAlert(backupPath: backupURL.path))
+                corruptPath = backupURL.path
             }
         }
-        return ConfigLoadResult(config: .default, alert: ConfigLoadAlert(backupPath: nil))
+
+        if let backupConfig = decodeConfig(at: AppPaths.configBackupFile) {
+            try? save(backupConfig)
+            return ConfigLoadResult(config: backupConfig, alert: ConfigLoadAlert(recovery: .backup, backupPath: corruptPath))
+        }
+
+        if let rebuilt = rebuildFromProfileDirectories() {
+            try? save(rebuilt)
+            return ConfigLoadResult(config: rebuilt, alert: ConfigLoadAlert(recovery: .disk, backupPath: corruptPath))
+        }
+        if mainFileExists {
+            return ConfigLoadResult(config: .default, alert: ConfigLoadAlert(recovery: .defaults, backupPath: corruptPath))
+        }
+        return ConfigLoadResult(config: .default, alert: nil)
     }
 
     func save(_ config: AppConfig) throws {
         AppPaths.ensureDirectories()
         let data = try JSONEncoder().encode(config)
-        try data.write(to: configURL, options: .atomic)
+        let temporaryURL = configURL.appendingPathExtension("tmp")
+        try data.write(to: temporaryURL, options: .atomic)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: configURL.path) {
+            try? fm.removeItem(at: AppPaths.configBackupFile)
+            try fm.copyItem(at: configURL, to: AppPaths.configBackupFile)
+        }
+        if fm.fileExists(atPath: configURL.path) {
+            _ = try fm.replaceItemAt(configURL, withItemAt: temporaryURL)
+        } else {
+            try fm.moveItem(at: temporaryURL, to: configURL)
+        }
+    }
+
+    private func decodeConfig(at url: URL) -> AppConfig? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard var config = try? JSONDecoder().decode(AppConfig.self, from: data) else { return nil }
+        var seen = Set<String>()
+        config.profiles = config.profiles.filter { profile in
+            guard profile.instanceNumber > 0 else { return false }
+            return seen.insert(profile.folder).inserted
+        }
+        return config
+    }
+
+    private func rebuildFromProfileDirectories() -> AppConfig? {
+        let fm = FileManager.default
+        let urls = (try? fm.contentsOfDirectory(at: AppPaths.profilesDir, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        let profiles = urls.compactMap { url -> Profile? in
+            let name = url.lastPathComponent
+            guard name.first == "p", Int(name.dropFirst()).map({ $0 > 0 }) == true,
+                  let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey]),
+                  values.isDirectory == true else { return nil }
+            return Profile(folder: name, displayName: "", lastUsed: values.contentModificationDate)
+        }.sorted { $0.instanceNumber < $1.instanceNumber }
+        return profiles.isEmpty ? nil : AppConfig(profiles: profiles)
     }
 }

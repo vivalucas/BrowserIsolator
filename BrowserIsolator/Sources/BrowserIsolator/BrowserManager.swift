@@ -136,6 +136,9 @@ class BrowserManager: ObservableObject {
         let loadResult = configStore.load()
         self.config = loadResult.config
         self.configLoadAlert = loadResult.alert
+        self.profileLastUsed = loadResult.config.profiles.reduce(into: [:]) { result, profile in
+            if let lastUsed = profile.lastUsed { result[profile.folder] = lastUsed }
+        }
         BrowserManager.shared = self
         ensureProfileDirs()
 
@@ -195,9 +198,9 @@ class BrowserManager: ObservableObject {
                 debugPorts[profile.folder] = debugPort
             }
             runningProfiles.insert(profile.folder)
-            profileLastUsed[profile.folder] = Date()
+            recordLastUsed(profile.folder)
 
-            if let debugPort {
+            if let debugPort, profile.fingerprintEnabled {
                 // 启动 browser-level CDP 监听；新 tab 由 Target 事件驱动注入。
                 let injector = FingerprintInjector(debugPort: debugPort, instanceNumber: profile.instanceNumber)
                 fingerprintInjectors[profile.folder] = injector
@@ -245,8 +248,8 @@ class BrowserManager: ObservableObject {
     }
 
     private func debugPortIfNeeded(for profile: Profile) throws -> Int? {
-        guard profile.fingerprintEnabled else { return nil }
-        return try findAvailablePort(preferred: 40000 + profile.instanceNumber)
+        guard profile.fingerprintEnabled || profile.collectorDebugEnabled else { return nil }
+        return try findAvailablePort(preferred: 41000 + profile.instanceNumber)
     }
 
     /// 从首选端口开始查找可用端口，最多尝试 10 个
@@ -390,7 +393,7 @@ class BrowserManager: ObservableObject {
 
         runningProfiles.remove(folder)
         stoppingProfiles.remove(folder)
-        profileLastUsed[folder] = Date()
+        recordLastUsed(folder)
 
         scanProfileInfo()
         return true
@@ -406,11 +409,12 @@ class BrowserManager: ObservableObject {
             guard hadProcess || wasRunning || wasStopping else { continue }
             runningProfiles.remove(folder)
             stoppingProfiles.remove(folder)
-            profileLastUsed[folder] = now
+            recordLastUsed(folder, date: now, saveImmediately: false)
 
             changed = true
         }
         if changed {
+            saveConfig()
             scanProfileInfo()
         }
     }
@@ -487,6 +491,25 @@ class BrowserManager: ObservableObject {
         saveConfig()
     }
 
+    func updateCollectorDebugEnabled(for profile: Profile, isEnabled: Bool) {
+        guard canChangeFingerprintMode(for: profile),
+              let idx = config.profiles.firstIndex(where: { $0.folder == profile.folder }) else { return }
+        config.profiles[idx].collectorDebugEnabled = isEnabled
+        saveConfig()
+    }
+
+    func updateCollectorDebugEnabled(for profiles: [Profile], isEnabled: Bool) {
+        let editableFolders = Set(profiles.filter { canChangeFingerprintMode(for: $0) }.map(\.folder))
+        guard !editableFolders.isEmpty else { return }
+        var changed = false
+        for idx in config.profiles.indices where editableFolders.contains(config.profiles[idx].folder) {
+            guard config.profiles[idx].collectorDebugEnabled != isEnabled else { continue }
+            config.profiles[idx].collectorDebugEnabled = isEnabled
+            changed = true
+        }
+        if changed { saveConfig() }
+    }
+
     func canChangeFingerprintMode(for profile: Profile) -> Bool {
         !runningProfiles.contains(profile.folder)
             && !startingProfiles.contains(profile.folder)
@@ -525,6 +548,14 @@ class BrowserManager: ObservableObject {
             let message = error.localizedDescription
             configSaveAlert = ConfigSaveAlert(message: message)
             print("[BrowserIsolator] 配置文件保存失败: \(error)")
+        }
+    }
+
+    private func recordLastUsed(_ folder: String, date: Date = Date(), saveImmediately: Bool = true) {
+        profileLastUsed[folder] = date
+        if let idx = config.profiles.firstIndex(where: { $0.folder == folder }) {
+            config.profiles[idx].lastUsed = date
+            if saveImmediately { saveConfig() }
         }
     }
 
@@ -879,6 +910,11 @@ class BrowserManager: ObservableObject {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 guard self.profileScanGeneration == generation else { return }
+                for profile in self.config.profiles {
+                    if let date = profile.lastUsed {
+                        lastUsed[profile.folder] = date
+                    }
+                }
                 for (folder, date) in self.profileLastUsed {
                     if let scanned = lastUsed[folder] {
                         lastUsed[folder] = max(scanned, date)
