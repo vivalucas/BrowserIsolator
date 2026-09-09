@@ -14,6 +14,11 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/BrowserIsolator"
+        ),
+        .testTarget(
+            name: "BrowserIsolatorTests",
+            dependencies: ["BrowserIsolator"],
+            path: "Tests/BrowserIsolatorTests"
         )
     ]
 )

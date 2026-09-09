@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test compatibility contract
+        working-directory: BrowserIsolator
+        run: swift test
+      - name: Build release executable
+        working-directory: BrowserIsolator
+        run: swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx13.0

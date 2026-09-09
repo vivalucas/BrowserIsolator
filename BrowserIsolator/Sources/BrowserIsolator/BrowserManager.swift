@@ -33,6 +33,29 @@ enum BrowserError: LocalizedError {
     }
 }
 
+func preferredDebugPort(for profile: Profile) -> Int? {
+    if profile.collectorDebugEnabled { return 41000 + profile.instanceNumber }
+    if profile.fingerprintEnabled { return 40000 + profile.instanceNumber }
+    return nil
+}
+
+func browserLaunchArguments(
+    profileDir: String,
+    debugPort: Int? = nil,
+    additionalArguments: [String] = []
+) -> [String] {
+    var arguments = [
+        "--user-data-dir=\(profileDir)",
+        "--no-first-run"
+    ]
+    if let debugPort {
+        arguments.append("--remote-debugging-address=127.0.0.1")
+        arguments.append("--remote-debugging-port=\(debugPort)")
+    }
+    arguments.append(contentsOf: additionalArguments)
+    return arguments
+}
+
 // MARK: - BrowserManager
 
 @MainActor
@@ -233,23 +256,17 @@ class BrowserManager: ObservableObject {
         let profileDir = AppPaths.profilesDir.appendingPathComponent(profile.folder).path
         let process = Process()
         process.executableURL = URL(fileURLWithPath: chromiumExePath)
-        var arguments = [
-            "--user-data-dir=\(profileDir)",
-            "--no-first-run",
-            "--test-type"
-        ]
-        if let debugPort {
-            arguments.append("--remote-debugging-address=127.0.0.1")
-            arguments.append("--remote-debugging-port=\(debugPort)")
-        }
-        arguments.append(contentsOf: additionalArguments)
-        process.arguments = arguments
+        process.arguments = browserLaunchArguments(
+            profileDir: profileDir,
+            debugPort: debugPort,
+            additionalArguments: additionalArguments
+        )
         return process
     }
 
     private func debugPortIfNeeded(for profile: Profile) throws -> Int? {
-        guard profile.fingerprintEnabled || profile.collectorDebugEnabled else { return nil }
-        return try findAvailablePort(preferred: 41000 + profile.instanceNumber)
+        guard let preferred = preferredDebugPort(for: profile) else { return nil }
+        return try findAvailablePort(preferred: preferred)
     }
 
     /// 从首选端口开始查找可用端口，最多尝试 10 个
