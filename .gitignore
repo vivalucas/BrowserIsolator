@@ -6,10 +6,8 @@ BrowserIsolator.app/
 AppIcon.png
 AppIcon.iconset/
 generate_icon.swift
-CLAUDE.md
 .claude/
 DEBUG.md
-project-log/
 
 # Environment & secrets
 .env
