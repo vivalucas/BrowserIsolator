@@ -2,7 +2,7 @@
 
 在一台 Mac 上同时运行多个彼此独立的 Chrome 环境。每个环境都有自己的 Cookie、LocalStorage、密码、扩展配置和登录状态，适合同时管理多个账号，而不用反复登录、退出或切换浏览器配置。
 
-[English](README.en.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Deutsch](README.de.md) | [Français](README.fr.md) | [Русский](README.ru.md)
+[English](README.en.md) | [日本語](README.ja.md)
 
 BrowserIsolator 的定位很简单：做好本地浏览器环境隔离。它不是复杂的反检测平台，也不承诺绕过网站风控；它只是把多个浏览器环境清楚地分开，让日常多账号使用更稳定、更省心。
 

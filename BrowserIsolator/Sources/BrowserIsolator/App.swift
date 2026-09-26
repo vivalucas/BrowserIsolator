@@ -534,7 +534,7 @@ private struct NavigationMaterial: View {
 
 private struct ContentSurface: ViewModifier {
     func body(content: Content) -> some View {
-        content.padding(16)
+        content.padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
@@ -569,10 +569,10 @@ struct MainView: View {
     @State private var deleteConfirmText: String = ""
     @State private var selectedProfileID: String?
     @State private var settingsWindowController: NSWindowController?
-    @AppStorage("MainSidebarWidth") private var mainSidebarWidth: Double = 360
+    @AppStorage("MainSidebarWidth") private var mainSidebarWidth: Double = 280
     @AppStorage("ShowAdvancedDetails") private var showAdvancedDetails: Bool = false
 
-    private let sidebarMinWidth: CGFloat = 340
+    private let sidebarMinWidth: CGFloat = 240
     private let sidebarMaxWidth: CGFloat = 560
     private let inspectorMinWidth: CGFloat = 300
 
@@ -652,7 +652,7 @@ struct MainView: View {
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 360)
                     } else {
-                        LazyVStack(spacing: 6) {
+                        LazyVStack(spacing: 4) {
                             ForEach(sortedProfiles) { profile in
                                 ProfileRow(
                                     profile: profile,
@@ -1050,7 +1050,7 @@ private struct ToolbarSemanticButtonStyle: ButtonStyle {
             .font(.system(size: 12, weight: .semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .frame(minHeight: 28)
+            .frame(minHeight: DesktopControlMetrics.compactHeight)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(backgroundColor(isPressed: configuration.isPressed))
@@ -1225,8 +1225,8 @@ struct ProfileRow: View {
                 .accessibilityLabel(l10n.t("common.start"))
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? selectionTint.opacity(0.13) : Color.clear)
@@ -1251,7 +1251,7 @@ private struct ProfileRowActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11, weight: .semibold))
-            .frame(width: 28, height: 24)
+            .frame(width: DesktopControlMetrics.compactHeight, height: DesktopControlMetrics.compactHeight)
             .foregroundStyle(foregroundColor)
             .background {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -1327,12 +1327,12 @@ struct ProfileInspectorView: View {
     @ViewBuilder
     private func inspector(for profile: Profile) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 5) {
                             Text(profileTitle(profile, l10n: l10n))
-                                .font(.system(size: 24, weight: .semibold))
+                                .font(.system(size: 20, weight: .semibold))
                                 .fixedSize(horizontal: false, vertical: true)
                             Label(statusText(for: profile), systemImage: "circle.fill")
                                 .font(.system(size: 12, weight: .medium))
@@ -1351,7 +1351,7 @@ struct ProfileInspectorView: View {
                             editActions(for: profile)
                         }
                     }
-                    .controlSize(.large)
+                    .buttonStyle(AppActionButtonStyle())
 
                     if !profile.note.isEmpty {
                         Text(profile.note)
@@ -1376,6 +1376,7 @@ struct ProfileInspectorView: View {
                                 .disabled(isRunning(profile) || isStopping(profile))
                             Button(l10n.t("inspector.clear_error")) { manager.clearProfileError(profile) }
                         }
+                        .buttonStyle(AppActionButtonStyle())
                     }
                     .padding(12)
                     .background(Color.red.opacity(0.08))
@@ -1403,20 +1404,15 @@ struct ProfileInspectorView: View {
                             DetailLine(label: l10n.t("details.port"), value: "\(debugPort)")
                         }
                         DetailLine(label: l10n.t("settings.chrome_version"), value: manager.chromeVersionText ?? l10n.t("settings.unknown"))
-                        DetailLine(label: l10n.t("settings.open_chrome_folder"), value: manager.chromiumExePath)
+                        DetailLine(label: l10n.t("details.browser_path"), value: manager.chromiumExePath)
                     }
                 }
 
                 InspectorSection(title: l10n.t("inspector.actions")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Button(l10n.t("inspector.open_profile_folder")) {
-                                NSWorkspace.shared.open(profilePath(profile))
-                            }
-                            Button(l10n.t("inspector.copy_profile_path")) {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(profilePath(profile).path, forType: .string)
-                            }
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) { profilePathActions(for: profile) }
+                            VStack(alignment: .leading, spacing: 12) { profilePathActions(for: profile) }
                         }
                         Button(role: .destructive) {
                             onDelete(profile)
@@ -1425,10 +1421,23 @@ struct ProfileInspectorView: View {
                         }
                         .disabled(isRunning(profile) || isStarting(profile) || isStopping(profile))
                     }
+                    .buttonStyle(AppActionButtonStyle(width: .column))
                 }
             }
-            .padding(24)
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func profilePathActions(for profile: Profile) -> some View {
+        Group {
+            Button(l10n.t("inspector.open_profile_folder")) {
+                NSWorkspace.shared.open(profilePath(profile))
+            }
+            Button(l10n.t("inspector.copy_profile_path")) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(profilePath(profile).path, forType: .string)
+            }
         }
     }
 
@@ -1443,20 +1452,21 @@ struct ProfileInspectorView: View {
     private func primaryAction(for profile: Profile) -> some View {
         if isStarting(profile) || isStopping(profile) {
             ProgressView().controlSize(.small)
+                .frame(width: DesktopControlMetrics.minimumActionWidth, height: DesktopControlMetrics.regularHeight)
         } else if isRunning(profile) {
             Button(role: .destructive) {
                 manager.stopProfile(profile)
             } label: {
                 Label(l10n.t("common.close"), systemImage: "stop.fill")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(AppActionButtonStyle())
         } else {
             Button {
                 manager.startProfile(profile)
             } label: {
                 Label(l10n.t("common.start"), systemImage: "play.fill")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AppActionButtonStyle(emphasis: .primary))
         }
     }
 
@@ -1619,20 +1629,22 @@ struct RenameSheet: View {
                     .foregroundStyle(.secondary)
                 TextField(l10n.t("rename.placeholder"), text: $name)
                     .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
                     .frame(maxWidth: .infinity)
                     .focused($isFocused)
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Spacer()
                 Button(l10n.t("common.cancel"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
                 Button(l10n.t("common.confirm"), action: onConfirm)
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AppActionButtonStyle(emphasis: .primary))
             }
         }
-        .padding(28)
+        .padding(24)
+        .buttonStyle(AppActionButtonStyle())
         .frame(width: 380)
         .onAppear { isFocused = true }
     }
@@ -1659,6 +1671,7 @@ struct ProfileTextSheet: View {
                     .foregroundStyle(.secondary)
                 TextField(placeholder, text: $text)
                     .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
                     .frame(maxWidth: .infinity)
                     .focused($isFocused)
                     .onChange(of: text) { newValue in
@@ -1667,16 +1680,17 @@ struct ProfileTextSheet: View {
                     }
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Spacer()
                 Button(l10n.t("common.cancel"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
                 Button(l10n.t("common.confirm"), action: onConfirm)
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AppActionButtonStyle(emphasis: .primary))
             }
         }
-        .padding(28)
+        .padding(24)
+        .buttonStyle(AppActionButtonStyle())
         .frame(width: 380)
         .onAppear {
             isFocused = true
@@ -1853,7 +1867,7 @@ struct SettingsView: View {
             settingsHeader
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
                     SettingsSection(title: l10n.t("settings.preferences"), systemImage: "slider.horizontal.3") {
                         SettingsControlRow(label: l10n.t("language")) {
                             LanguageMenu(l10n: l10n, displayTitle: l10n.language.nativeName)
@@ -1929,15 +1943,13 @@ struct SettingsView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
-                                .frame(width: 210, alignment: .leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         } action: {
-                            Button {
+                            Button(l10n.t("settings.set_default_browser")) {
                                 manager.setAsDefaultBrowser()
-                            } label: {
-                                Label(l10n.t("settings.set_default_browser"), systemImage: "safari")
                             }
-                            .buttonStyle(SettingsActionButtonStyle(isProminent: true))
+                            .buttonStyle(AppActionButtonStyle(width: .column))
                             .disabled(manager.config.profiles.isEmpty)
                         }
                     }
@@ -1962,7 +1974,8 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: l10n.t("settings.about_support"), systemImage: "questionmark.circle") {
-                        SettingsLineActionRow(label: l10n.t("settings.app_version"), value: manager.currentVersion) {
+                        SettingsLine(label: l10n.t("settings.app_version"), value: manager.currentVersion)
+                        SettingsButtonRow {
                             Button {
                                 updater.checkForUpdates()
                             } label: {
@@ -1989,18 +2002,18 @@ struct SettingsView: View {
                         }
                         SettingsDivider()
 
-                        SettingsControlRow(label: l10n.t("settings.feedback_group")) {
+                        SettingsLineActionRow(label: l10n.t("settings.feedback_group"), value: "") {
                             Button {
                                 manager.openIssuesPage()
                             } label: {
                                 Label(l10n.t("settings.open_issues"), systemImage: "bubble.left.and.bubble.right")
                             }
-                            .buttonStyle(SettingsActionButtonStyle())
+                            .buttonStyle(AppActionButtonStyle(width: .column))
                         }
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 20)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
             }
         }
         .ignoresSafeArea(.container, edges: .top)
@@ -2177,7 +2190,7 @@ struct FingerprintModeManagerView: View {
                 }
                 .font(.system(size: 12))
                 .padding(.horizontal, 10)
-                .frame(height: 30)
+                .frame(height: DesktopControlMetrics.regularHeight)
                 .background {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(Color(nsColor: .textBackgroundColor).opacity(0.72))
@@ -2202,7 +2215,7 @@ struct FingerprintModeManagerView: View {
                     .disabled(!filteredProfiles.contains { manager.canChangeFingerprintMode(for: $0) && $0.collectorDebugEnabled })
                     Spacer()
                 }
-                .controlSize(.small)
+                .buttonStyle(AppActionButtonStyle(width: .column))
             }
             .padding(.horizontal, 22)
             .padding(.top, 22)
@@ -2251,6 +2264,7 @@ struct FingerprintModeManagerView: View {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
+                .buttonStyle(AppActionButtonStyle())
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 14)
@@ -2344,7 +2358,7 @@ struct SettingsSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Label {
                 Text(title)
             } icon: {
@@ -2369,6 +2383,8 @@ struct SettingsSection<Content: View>: View {
     }
 }
 
+// Settings use one label column and one trailing action column. Multi-action
+// groups get their own row so they never squeeze the value between buttons.
 struct SettingsControlRow<Content: View>: View {
     let label: String
     let content: Content
@@ -2379,16 +2395,13 @@ struct SettingsControlRow<Content: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(label)
-                .foregroundStyle(.secondary)
-                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
-            content
-                .frame(maxWidth: SettingsMetrics.controlWidth, alignment: .leading)
+        HStack(spacing: 12) {
+            SettingsRowLabel(label: label)
+            content.controlSize(.large)
+                .frame(maxWidth: SettingsMetrics.controlWidth, minHeight: DesktopControlMetrics.regularHeight, alignment: .leading)
             Spacer(minLength: 0)
         }
-        .font(.system(size: 12))
-        .frame(minHeight: SettingsMetrics.rowHeight)
+        .modifier(SettingsRowSpacing())
     }
 }
 
@@ -2404,20 +2417,14 @@ struct SettingsControlActionRow<Content: View, Action: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(label)
-                .foregroundStyle(.secondary)
-                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
-            content
-                .frame(maxWidth: SettingsMetrics.inlineControlWidth, alignment: .leading)
+        HStack(spacing: 12) {
+            SettingsRowLabel(label: label)
+            content.controlSize(.large)
+                .frame(maxWidth: .infinity, minHeight: DesktopControlMetrics.regularHeight, alignment: .leading)
             action
-            Spacer(minLength: 0)
         }
-        .font(.system(size: 12))
-        .labelStyle(.titleAndIcon)
-        .buttonStyle(SettingsActionButtonStyle())
-        .controlSize(.regular)
-        .frame(minHeight: SettingsMetrics.rowHeight)
+        .buttonStyle(AppActionButtonStyle(width: .column))
+        .modifier(SettingsRowSpacing())
     }
 }
 
@@ -2426,49 +2433,48 @@ struct SettingsToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(label)
-                .foregroundStyle(.secondary)
-                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-            Spacer(minLength: 0)
+        SettingsControlRow(label: label) {
+            Toggle("", isOn: $isOn).labelsHidden()
         }
-        .font(.system(size: 12))
-        .frame(minHeight: SettingsMetrics.rowHeight)
     }
 }
 
 struct SettingsButtonRow<Content: View>: View {
     let content: Content
 
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                content
-                Spacer(minLength: 0)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                content
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) { content }
+            VStack(alignment: .trailing, spacing: 8) { content }
         }
-        .labelStyle(.titleAndIcon)
-        .buttonStyle(SettingsActionButtonStyle())
-        .controlSize(.regular)
-        .frame(minHeight: SettingsMetrics.rowHeight, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .buttonStyle(AppActionButtonStyle(width: .column))
+        .modifier(SettingsRowSpacing())
     }
 }
 
 struct SettingsDivider: View {
+    var body: some View { Divider() }
+}
+
+private struct SettingsRowLabel: View {
+    let label: String
     var body: some View {
-        Divider()
-            .padding(.leading, SettingsMetrics.labelWidth + 12)
+        Text(label)
+            .foregroundStyle(.secondary)
+            .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct SettingsRowSpacing: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: 12))
+            .frame(minHeight: DesktopControlMetrics.regularHeight)
+            .padding(.vertical, 6)
     }
 }
 
@@ -2477,20 +2483,14 @@ struct SettingsLine: View {
     let value: String
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(label)
-                .foregroundStyle(.secondary)
-                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            SettingsRowLabel(label: label)
             Text(value)
                 .textSelection(.enabled)
-                .foregroundStyle(.primary)
-                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .multilineTextAlignment(.leading)
-            Spacer(minLength: 0)
         }
-        .font(.system(size: 12))
-        .frame(minHeight: SettingsMetrics.rowHeight)
+        .modifier(SettingsRowSpacing())
     }
 }
 
@@ -2506,75 +2506,22 @@ struct SettingsLineActionRow<Action: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Text(label)
-                .foregroundStyle(.secondary)
-                .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
+        HStack(spacing: 12) {
+            SettingsRowLabel(label: label)
             Text(value)
                 .textSelection(.enabled)
-                .foregroundStyle(.primary)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .multilineTextAlignment(.leading)
-            HStack(spacing: 8) {
-                action
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            Spacer(minLength: 0)
+            action
         }
-        .font(.system(size: 12))
-        .labelStyle(.titleAndIcon)
-        .buttonStyle(SettingsActionButtonStyle())
-        .controlSize(.regular)
-        .frame(minHeight: SettingsMetrics.rowHeight)
+        .buttonStyle(AppActionButtonStyle(width: .column))
+        .modifier(SettingsRowSpacing())
     }
 }
 
 private enum SettingsMetrics {
-    static let labelWidth: CGFloat = 150
-    static let controlWidth: CGFloat = 260
-    static let inlineControlWidth: CGFloat = 210
-    static let rowHeight: CGFloat = 36
-}
-
-struct SettingsActionButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-    var isProminent = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 11.5, weight: .medium))
-            .lineLimit(2)
-            .multilineTextAlignment(.center)
-            .frame(minWidth: 112, maxWidth: 176)
-            .frame(minHeight: 28)
-            .padding(.vertical, 5)
-            .padding(.horizontal, 9)
-            .foregroundStyle(foregroundColor)
-            .background {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(backgroundColor(configuration: configuration))
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(borderColor, lineWidth: 1)
-            }
-            .opacity(isEnabled ? 1 : 0.5)
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-    }
-
-    private var foregroundColor: Color {
-        isProminent ? .white : .primary
-    }
-
-    private var borderColor: Color {
-        isProminent ? Color.accentColor.opacity(0.0) : Color.primary.opacity(0.10)
-    }
-
-    private func backgroundColor(configuration: Configuration) -> Color {
-        if isProminent {
-            return Color.accentColor.opacity(configuration.isPressed ? 0.76 : 0.92)
-        }
-        return Color(nsColor: .controlBackgroundColor).opacity(configuration.isPressed ? 0.95 : 0.70)
-    }
+    static let labelWidth: CGFloat = 124
+    static let controlWidth: CGFloat = 220
 }
 
 // MARK: - 下载视图
@@ -2660,7 +2607,7 @@ struct DownloadView: View {
                         Button(l10n.t("download.retry")) {
                             manager.downloadChromium()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AppActionButtonStyle(emphasis: .primary))
                         .controlSize(.small)
                         Button(l10n.t("download.copy_error")) {
                             NSPasteboard.general.clearContents()
@@ -2682,6 +2629,7 @@ struct DownloadView: View {
 
             Spacer()
         }
+        .buttonStyle(AppActionButtonStyle())
         .padding(32)
         .frame(maxWidth: .infinity, minHeight: 360)
         }

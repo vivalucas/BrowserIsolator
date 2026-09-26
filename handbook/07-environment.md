@@ -6,7 +6,7 @@
 
 | 环境 | 工具链依据 | 安装与启动入口 | 已验证范围 |
 | --- | --- | --- | --- |
-| Apple Silicon macOS 13+ | Swift 6 / SwiftPM；Xcode 或 Swift 工具链 | `Package.swift`、`build.sh` | CI 在 macOS 14 测试并构建 arm64 Release |
+| Apple Silicon macOS 13+ | Swift 6 / SwiftPM；Xcode 或 Swift 工具链 | `Package.swift`、`build.sh` | CI 在 macOS 14 显式选择 Xcode 16.2（Swift 6），测试并构建 arm64 Release |
 | Intel macOS | 无发布目标 | 不支持 | 未验证 |
 | Windows / Ubuntu | 非本项目平台 | 不适用 | 独立 Windows 项目不代表本仓库通过 |
 
@@ -36,3 +36,5 @@ SwiftPM 构建缓存可能保存 checkout 的绝对路径。仓库移动后若�
 发布 workflow 需要 GitHub Actions Secret `SPARKLE_PRIVATE_KEY`；它只用于生成签名 appcast，不得写入仓库、handbook 或本机共享配置。CI 的普通测试与构建不需要该密钥。
 
 首次运行会从 Google 官方地址下载 Chrome；离线开发可以编译和运行测试，但无法验证下载、安装和真实 profile 流程。手动 Chrome 安装和用户使用方法见根 [README](../README.md)。
+
+CI 通过 `DEVELOPER_DIR=/Applications/Xcode_16.2.app/Contents/Developer` 选择 runner 已安装的工具链，并先输出 Xcode/Swift 版本；避免 macos-14 默认 Xcode 15.4 的 Swift 5.10 无法读取 Swift tools 6.0 包。镜像提供版本见 [官方清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-14-Readme.md)。

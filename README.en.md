@@ -2,7 +2,7 @@
 
 Run multiple isolated Chrome environments on one Mac. Each environment has its own cookies, LocalStorage, passwords, and login state, so you can manage multiple accounts without constantly signing in, signing out, or switching browser profiles.
 
-[中文](README.md) | [English](README.en.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Deutsch](README.de.md) | [Français](README.fr.md) | [Русский](README.ru.md)
+[中文](README.md) | [English](README.en.md) | [日本語](README.ja.md)
 
 BrowserIsolator has a narrow goal: reliable local browser-environment isolation. It is not a full anti-detection platform and does not promise to bypass website risk controls. It simply keeps browser environments clearly separated for everyday multi-account workflows.
 
@@ -21,7 +21,7 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 - **Settings panel**: view Chrome status, data folders, external-link behavior, language, appearance mode, advanced-detail display options, version updates, author contact, and feedback links
 - **Config recovery**: if `config.json` is corrupt or unreadable, BrowserIsolator loads defaults and tries to preserve the bad file as a timestamped backup
 - **Local-first**: configuration, browser files, and profile data stay on your Mac; BrowserIsolator does not upload or collect user data
-- **7 languages**: 中文, English, 日本語, 한국어, Deutsch, Français, Русский
+- **3 languages**: 中文, English, 日本語
 
 ## Requirements
 

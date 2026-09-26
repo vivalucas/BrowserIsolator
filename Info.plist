@@ -9,10 +9,6 @@
         <string>zh-Hans</string>
         <string>en</string>
         <string>ja</string>
-        <string>ko</string>
-        <string>de</string>
-        <string>fr</string>
-        <string>ru</string>
     </array>
     <key>CFBundleExecutable</key>
     <string>BrowserIsolator</string>
@@ -43,9 +39,9 @@
         </dict>
     </array>
     <key>CFBundleShortVersionString</key>
-    <string>1.9.2</string>
+    <string>1.9.3</string>
     <key>CFBundleVersion</key>
-    <string>45</string>
+    <string>46</string>
     <key>SUFeedURL</key>
     <string>https://github.com/vivalucas/BrowserIsolator/releases/latest/download/appcast.xml</string>
     <key>SUPublicEDKey</key>

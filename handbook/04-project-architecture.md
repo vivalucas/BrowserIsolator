@@ -7,6 +7,7 @@
 | 模块 / 目录 | 职责 | 主要依赖 | 不承担什么 |
 | --- | --- | --- | --- |
 | `App.swift` | 应用生命周期、主窗口、菜单栏、设置和 Sparkle UI | BrowserManager、Localization、Sparkle、AppKit | 配置文件细节和 CDP 协议实现 |
+| `UIComponents.swift` | 共享控件尺寸、动作按钮样式与状态 | SwiftUI、系统颜色 | 业务命令和配置读写 |
 | `BrowserManager.swift` | Chrome 生命周期、端口、下载、外链、环境状态 | Models、FingerprintInjector、Foundation/AppKit | 具体视图布局 |
 | `FingerprintInjector.swift` | browser-level CDP 连接、target 跟踪和脚本注入 | URLSession WebSocket | profile 数据和 UI 状态 |
 | `Models.swift` | Profile/AppConfig、路径和 JSON 恢复 | Foundation、文件系统 | 进程管理 |

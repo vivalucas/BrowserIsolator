@@ -8,14 +8,14 @@
 - 触发关系：普通 push 到 `main` 只运行 CI；推送 `v*` 标签会运行 Release workflow 并创建 GitHub Release。
 - 产物：arm64 `BrowserIsolator.dmg` 和由 Sparkle 工具签名的 `appcast.xml`。
 - 更新地址：`https://github.com/vivalucas/BrowserIsolator/releases/latest/download/appcast.xml`。
-- 当前源码版本：1.9.2（build 45），尚未创建发布标签或 Release。
+- 当前源码版本：1.9.3（build 46），尚未创建发布标签或 Release。
 - 当前发布版本：1.9.0（build 43）。发布应用使用 ad-hoc code signing，未做 Apple 公证。
 
 ## 发布流程
 
 1. 确认本轮已获版本发布授权，工作区和目标分支明确。
 2. 更新 `Info.plist` 的短版本和 build 号；同步用户可见 release notes 与必要文档。
-3. 在 `BrowserIsolator/` 运行 `swift test`，并执行 arm64 Release 构建；检查七种语言资源和用户主路径。
+3. 在 `BrowserIsolator/` 运行 `swift test`，并执行 arm64 Release 构建；检查三种语言资源和用户主路径。
 4. 提交版本变更，创建与短版本一致的 `vX.Y.Z` 标签，推送当前分支和标签。
 5. 观察 `.github/workflows/release.yml`：测试 → 构建 → 打包 → ad-hoc 签名 → DMG → 签名 appcast → GitHub Release。
 6. 从 Release 下载产物，验证安装、启动、检查更新和主要环境操作；仅 workflow 成功不等于发行验收完成。
@@ -31,4 +31,4 @@
 
 ## 验证边界
 
-CI 使用 `macos-14`；发布目标是 `arm64-apple-macosx13.0`。真实 macOS 13、Sparkle 跨版本更新、Gatekeeper、Chrome 下载和系统默认浏览器行为仍需要人工验证。Intel Mac、Windows 和 Ubuntu 不在发布范围。
+CI 使用 `macos-14` 并显式选择 Xcode 16.2（Swift 6）；发布目标是 `arm64-apple-macosx13.0`。真实 macOS 13、Sparkle 跨版本更新、Gatekeeper、Chrome 下载和系统默认浏览器行为仍需要人工验证。Intel Mac、Windows 和 Ubuntu 不在发布范围。

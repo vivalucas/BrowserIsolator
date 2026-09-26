@@ -14,7 +14,7 @@
 | Chrome 管理 | 自动下载、安装、验证和重新下载 | `BrowserManager`、设置页 | 临时 DMG 清理；安装失败恢复旧副本；运行时不可重装 |
 | 配置恢复 | 从备份或磁盘恢复环境清单 | `ConfigStore` | 不因配置损坏隐藏仍存在的 profile 目录 |
 | 更新与发布 | 检查并安装应用更新 | `SparkleUpdater`、GitHub Releases | appcast 签名有效；更新重启后主窗口可见 |
-| 多语言和外观 | 7 种语言、浅色/深色/跟随系统 | `Localization.swift`、`AppAppearance` | SwiftUI 与 AppKit 窗口外观同步 |
+| 多语言和外观 | 3 种语言、浅色/深色/跟随系统 | `Localization.swift`、`AppAppearance` | SwiftUI 与 AppKit 窗口外观同步 |
 
 ## 关键规则
 
