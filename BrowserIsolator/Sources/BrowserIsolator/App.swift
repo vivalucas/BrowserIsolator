@@ -453,7 +453,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             for attempt in 0..<30 {
                 try? await Task.sleep(nanoseconds: attempt == 0 ? 200_000_000 : 100_000_000)
-                if let main = NSApp.windows.first(where: isBrowserIsolatorMainWindow) {
+                if let main = NSApp.windows.first(where: { isBrowserIsolatorMainWindow($0) }) {
                     NSApp.activate(ignoringOtherApps: true)
                     main.orderFrontRegardless()
                     main.makeKeyAndOrderFront(nil)
@@ -1749,7 +1749,7 @@ struct MenuBarView: View {
             Divider()
             Button(l10n.t("menu.open_panel")) {
                 NSApp.activate(ignoringOtherApps: true)
-                if let main = NSApp.windows.first(where: isBrowserIsolatorMainWindow) {
+                if let main = NSApp.windows.first(where: { isBrowserIsolatorMainWindow($0) }) {
                     main.makeKeyAndOrderFront(nil)
                 }
             }
@@ -1824,7 +1824,7 @@ private extension View {
                     message: Text(message),
                     primaryButton: .default(Text(l10n.t("menu.open_panel"))) {
                         NSApp.activate(ignoringOtherApps: true)
-                        if let main = NSApp.windows.first(where: isBrowserIsolatorMainWindow) {
+                        if let main = NSApp.windows.first(where: { isBrowserIsolatorMainWindow($0) }) {
                             main.orderFrontRegardless()
                             main.makeKeyAndOrderFront(nil)
                         }

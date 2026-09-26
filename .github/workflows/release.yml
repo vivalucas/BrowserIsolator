@@ -73,4 +73,5 @@ jobs:
           files: |
             sparkle-release/BrowserIsolator.dmg
             sparkle-release/appcast.xml
+          body_path: .github/release-notes.md
           generate_release_notes: true
