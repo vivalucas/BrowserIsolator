@@ -15,6 +15,14 @@
 | 公共设置行和按钮样式 | `SettingsSection`、`Settings*Row`、`SettingsActionButtonStyle` |
 | 当前认可页面 | `MainView`、`ProfileInspectorView`、`SettingsView` |
 
+## 视觉层次与跨平台约定
+
+- 采用 8 / 12 / 16 / 24 点的间距节奏；24 点详情标题、13–14 点正文和 11–12 点辅助信息。完整名称、备注和路径在详情中换行，列表保持单行扫描。
+- 导航和设置标题使用系统 regular material；内容使用不透明系统 controlBackgroundColor，避免玻璃叠加。减少透明度或增加对比度时，导航降级为系统窗口底色。
+- macOS 26+ 使用原生 glassProminent 添加按钮；旧系统及旧编译器使用 borderedProminent，不提高 macOS 13 最低版本。材质和交互以系统渲染为准，不依赖 macOS 27 专属行为。
+- 设置首页优先显示语言、外观与高级详情；模式管理继续使用二级窗口。环境行使用真正的 Button 支持键盘与辅助功能，添加提供 Command-N。
+- 两端共享列表/详情布局、分组留白、主操作蓝色与危险操作语义；保留 macOS 工具栏、sheet、菜单和系统确认框。Windows 使用本地语义画刷而非截图模糊或自绘窗口壳。
+
 ## 页面与交互规则
 
 - 主窗口维持“列表 + 详情”结构：列表负责选择和快速操作，详情负责当前环境的信息、主要动作和恢复提示。

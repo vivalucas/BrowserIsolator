@@ -18,7 +18,7 @@ struct BrowserIsolatorApp: App {
     var body: some Scene {
         WindowGroup {
             MainView(manager: manager, l10n: localization, updater: updater)
-                .frame(minWidth: 680, idealWidth: 760, minHeight: 420)
+                .frame(minWidth: 680, idealWidth: 900, minHeight: 420)
                 .background(WindowFrameAutosaveView(name: "BrowserIsolator.mainWindow"))
                 .preferredColorScheme(preferredColorScheme)
                 .onAppear {
@@ -29,7 +29,7 @@ struct BrowserIsolatorApp: App {
                 }
         }
         .windowResizability(.contentSize)
-        .defaultSize(width: 760, height: 520)
+        .defaultSize(width: 900, height: 600)
 
         MenuBarExtra {
             MenuBarView(manager: manager, l10n: localization, updater: updater)
@@ -519,6 +519,42 @@ private func applyAppAppearance(_ appearance: AppAppearance) {
 
 // MARK: - 主界面
 
+// Navigation uses native material; reading surfaces stay opaque for stable contrast.
+private struct NavigationMaterial: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    var body: some View {
+        if reduceTransparency || contrast == .increased {
+            Color(nsColor: .windowBackgroundColor)
+        } else {
+            Rectangle().fill(.regularMaterial)
+        }
+    }
+}
+
+private struct ContentSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        content.padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+    }
+}
+
+private struct AddEnvironmentStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.buttonStyle(.glassProminent)
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
+        #else
+        content.buttonStyle(.borderedProminent)
+        #endif
+    }
+}
+
 struct MainView: View {
     @ObservedObject var manager: BrowserManager
     @ObservedObject var l10n: Localization
@@ -681,6 +717,7 @@ struct MainView: View {
                     }
                 }
                 .frame(width: sidebarWidth)
+                .background(NavigationMaterial())
 
                 MainSplitDivider(
                     currentWidth: sidebarWidth,
@@ -736,7 +773,8 @@ struct MainView: View {
                     Label(l10n.t("toolbar.add"), systemImage: "plus")
                         .labelStyle(.titleAndIcon)
                 }
-                .buttonStyle(.bordered)
+                .modifier(AddEnvironmentStyle())
+                .keyboardShortcut("n", modifiers: .command)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -1126,6 +1164,7 @@ struct ProfileRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            Button(action: onCardClick) {
             HStack(spacing: 12) {
                 Circle()
                     .fill(statusColor)
@@ -1160,7 +1199,9 @@ struct ProfileRow: View {
                 Spacer(minLength: 10)
             }
             .contentShape(Rectangle())
-            .onTapGesture(perform: onCardClick)
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
 
             if isStarting || isStopping {
                 ProgressView()
@@ -1173,6 +1214,7 @@ struct ProfileRow: View {
                 .buttonStyle(ProfileRowActionButtonStyle(kind: .stop))
                 .controlSize(.small)
                 .help(l10n.t("common.close"))
+        .accessibilityLabel(l10n.t("common.close"))
             } else {
                 Button(action: onToggle) {
                     Image(systemName: "play.fill")
@@ -1180,16 +1222,17 @@ struct ProfileRow: View {
                 .buttonStyle(ProfileRowActionButtonStyle(kind: .start))
                 .controlSize(.small)
                 .help(l10n.t("common.start"))
+                .accessibilityLabel(l10n.t("common.start"))
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
         .background {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? selectionTint.opacity(0.13) : Color.clear)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(isSelected ? selectionTint.opacity(0.28) : Color.clear, lineWidth: 1)
         }
         .animation(.easeInOut(duration: 0.12), value: isSelected)
@@ -1289,8 +1332,8 @@ struct ProfileInspectorView: View {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 5) {
                             Text(profileTitle(profile, l10n: l10n))
-                                .font(.system(size: 20, weight: .semibold))
-                                .lineLimit(2)
+                                .font(.system(size: 24, weight: .semibold))
+                                .fixedSize(horizontal: false, vertical: true)
                             Label(statusText(for: profile), systemImage: "circle.fill")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(statusColor(for: profile))
@@ -1298,18 +1341,24 @@ struct ProfileInspectorView: View {
                         Spacer()
                     }
 
-                    HStack(spacing: 8) {
-                        primaryAction(for: profile)
-                        Button(l10n.t("context.rename")) { onRename(profile) }
-                        Button(l10n.t("context.note")) { onNote(profile) }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            primaryAction(for: profile)
+                            editActions(for: profile)
+                        }
+                        VStack(alignment: .leading, spacing: 10) {
+                            primaryAction(for: profile)
+                            editActions(for: profile)
+                        }
                     }
+                    .controlSize(.large)
 
                     if !profile.note.isEmpty {
                         Text(profile.note)
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
                     }
                 }
 
@@ -1360,7 +1409,7 @@ struct ProfileInspectorView: View {
 
                 InspectorSection(title: l10n.t("inspector.actions")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack {
+                        VStack(alignment: .leading, spacing: 8) {
                             Button(l10n.t("inspector.open_profile_folder")) {
                                 NSWorkspace.shared.open(profilePath(profile))
                             }
@@ -1378,8 +1427,15 @@ struct ProfileInspectorView: View {
                     }
                 }
             }
-            .padding(18)
+            .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func editActions(for profile: Profile) -> some View {
+        HStack(spacing: 8) {
+            Button(l10n.t("context.rename")) { onRename(profile) }
+            Button(l10n.t("context.note")) { onNote(profile) }
         }
     }
 
@@ -1468,6 +1524,7 @@ struct InspectorSection<Content: View>: View {
                 .foregroundStyle(.secondary)
             content
         }
+        .modifier(ContentSurface())
     }
 }
 
@@ -1511,10 +1568,10 @@ struct DetailLine: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(label)
                 .frame(width: 86, alignment: .leading)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
             Text(value)
                 .textSelection(.enabled)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -1553,7 +1610,7 @@ struct RenameSheet: View {
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 20) {
             Text(l10n.t("rename.title")).font(.headline)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -1562,11 +1619,12 @@ struct RenameSheet: View {
                     .foregroundStyle(.secondary)
                 TextField(l10n.t("rename.placeholder"), text: $name)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 260)
+                    .frame(maxWidth: .infinity)
                     .focused($isFocused)
             }
 
             HStack(spacing: 12) {
+                Spacer()
                 Button(l10n.t("common.cancel"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
                 Button(l10n.t("common.confirm"), action: onConfirm)
@@ -1575,7 +1633,7 @@ struct RenameSheet: View {
             }
         }
         .padding(28)
-        .frame(width: 320)
+        .frame(width: 380)
         .onAppear { isFocused = true }
     }
 }
@@ -1592,7 +1650,7 @@ struct ProfileTextSheet: View {
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 20) {
             Text(title).font(.headline)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -1601,7 +1659,7 @@ struct ProfileTextSheet: View {
                     .foregroundStyle(.secondary)
                 TextField(placeholder, text: $text)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 260)
+                    .frame(maxWidth: .infinity)
                     .focused($isFocused)
                     .onChange(of: text) { newValue in
                         guard let maxLength, newValue.count > maxLength else { return }
@@ -1610,6 +1668,7 @@ struct ProfileTextSheet: View {
             }
 
             HStack(spacing: 12) {
+                Spacer()
                 Button(l10n.t("common.cancel"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
                 Button(l10n.t("common.confirm"), action: onConfirm)
@@ -1618,7 +1677,7 @@ struct ProfileTextSheet: View {
             }
         }
         .padding(28)
-        .frame(width: 320)
+        .frame(width: 380)
         .onAppear {
             isFocused = true
             if let maxLength, text.count > maxLength {
@@ -1795,6 +1854,26 @@ struct SettingsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    SettingsSection(title: l10n.t("settings.preferences"), systemImage: "slider.horizontal.3") {
+                        SettingsControlRow(label: l10n.t("language")) {
+                            LanguageMenu(l10n: l10n, displayTitle: l10n.language.nativeName)
+                        }
+                        SettingsDivider()
+
+                        SettingsControlRow(label: l10n.t("settings.appearance")) {
+                            Picker("", selection: $appAppearance) {
+                                ForEach(AppAppearance.allCases) { appearance in
+                                    Text(appearanceTitle(appearance)).tag(appearance.rawValue)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 230)
+                        }
+                        SettingsDivider()
+
+                        SettingsToggleRow(label: l10n.t("settings.show_advanced"), isOn: $showAdvancedDetails)
+                    }
+
                     SettingsSection(title: l10n.t("settings.browser"), systemImage: "globe") {
                         SettingsLineActionRow(label: l10n.t("settings.chrome_status"), value: manager.chromiumReady ? l10n.t("settings.ready") : l10n.t("settings.not_installed")) {
                             Button {
@@ -1880,26 +1959,6 @@ struct SettingsView: View {
                                 Label(l10n.t("settings.environment_modes_manage"), systemImage: "slider.horizontal.3")
                             }
                         }
-                    }
-
-                    SettingsSection(title: l10n.t("settings.preferences"), systemImage: "slider.horizontal.3") {
-                        SettingsControlRow(label: l10n.t("language")) {
-                            LanguageMenu(l10n: l10n, displayTitle: l10n.language.nativeName)
-                        }
-                        SettingsDivider()
-
-                        SettingsControlRow(label: l10n.t("settings.appearance")) {
-                            Picker("", selection: $appAppearance) {
-                                ForEach(AppAppearance.allCases) { appearance in
-                                    Text(appearanceTitle(appearance)).tag(appearance.rawValue)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(width: 230)
-                        }
-                        SettingsDivider()
-
-                        SettingsToggleRow(label: l10n.t("settings.show_advanced"), isOn: $showAdvancedDetails)
                     }
 
                     SettingsSection(title: l10n.t("settings.about_support"), systemImage: "questionmark.circle") {
@@ -2027,7 +2086,7 @@ struct SettingsView: View {
         .padding(.horizontal, 18)
         .padding(.top, 10)
         .padding(.bottom, 9)
-        .background(.ultraThinMaterial)
+        .background(NavigationMaterial())
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color.primary.opacity(0.08))
@@ -2056,6 +2115,7 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .help(l10n.t("common.close"))
+        .accessibilityLabel(l10n.t("common.close"))
     }
 
     private func appearanceTitle(_ appearance: AppAppearance) -> String {
@@ -2146,7 +2206,8 @@ struct FingerprintModeManagerView: View {
             }
             .padding(.horizontal, 22)
             .padding(.top, 22)
-            .padding(.bottom, 14)
+            .padding(.bottom, 16)
+            .background(NavigationMaterial())
 
             Divider()
 
@@ -2173,9 +2234,9 @@ struct FingerprintModeManagerView: View {
                         }
                     }
                     .background {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.46))
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
                     }
                     .padding(22)
@@ -2253,7 +2314,7 @@ struct FingerprintModeRow: View {
                     .foregroundStyle(.primary)
                 Text(stateText)
                     .font(.system(size: 11))
-                    .foregroundStyle(isLocked ? .secondary : .tertiary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
             Spacer(minLength: 12)
@@ -2266,6 +2327,7 @@ struct FingerprintModeRow: View {
         }
         .font(.system(size: 12))
         .frame(minHeight: 42)
+        .padding(.vertical, 10)
         .help(l10n.t("settings.environment_modes_hint"))
     }
 }
@@ -2302,15 +2364,7 @@ struct SettingsSection<Content: View>: View {
             VStack(alignment: .leading, spacing: 0) {
                 content
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.58))
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
-            }
+            .modifier(ContentSurface())
         }
     }
 }
@@ -2494,6 +2548,7 @@ struct SettingsActionButtonStyle: ButtonStyle {
             .multilineTextAlignment(.center)
             .frame(minWidth: 112, maxWidth: 176)
             .frame(minHeight: 28)
+            .padding(.vertical, 5)
             .padding(.horizontal, 9)
             .foregroundStyle(foregroundColor)
             .background {
@@ -2529,7 +2584,8 @@ struct DownloadView: View {
     @ObservedObject var l10n: Localization
 
     var body: some View {
-        VStack(spacing: 20) {
+        ScrollView {
+        VStack(spacing: 24) {
             Spacer()
 
             Image(systemName: "arrow.down.circle.dotted")
@@ -2537,7 +2593,7 @@ struct DownloadView: View {
                 .foregroundStyle(.secondary)
 
             Text(l10n.t("download.title"))
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 22, weight: .semibold))
 
             switch manager.downloadState {
             case .fetchingInfo:
@@ -2577,10 +2633,10 @@ struct DownloadView: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.red)
                     Text(message)
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
-                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 320)
 
                     Divider()
@@ -2590,7 +2646,7 @@ struct DownloadView: View {
                         Text(l10n.t("download.manual_title"))
                             .font(.system(size: 11, weight: .medium))
                         Text(l10n.t("download.manual_steps"))
-                            .font(.system(size: 10))
+                            .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: 280)
@@ -2626,6 +2682,9 @@ struct DownloadView: View {
 
             Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(32)
+        .frame(maxWidth: .infinity, minHeight: 360)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
