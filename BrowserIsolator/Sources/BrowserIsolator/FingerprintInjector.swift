@@ -55,10 +55,14 @@ actor FingerprintInjector {
         guard !starting, browserTask == nil, !disconnected else { return }
         starting = true
         state = .waiting
-        defer { starting = false }
+        defer {
+            starting = false
+            if browserTask == nil && !disconnected { scheduleReconnect() }
+        }
 
         do {
             let browserURL = try await pollBrowserWebSocketURL()
+            guard !disconnected else { return }
             let task = URLSession.shared.webSocketTask(with: browserURL)
             browserTask = task
             task.resume()
@@ -178,10 +182,11 @@ actor FingerprintInjector {
                 break
             }
         }
-        handleBrowserDisconnect()
+        handleBrowserDisconnect(task: task)
     }
 
     private func handleBrowserMessage(_ json: [String: Any], task: URLSessionWebSocketTask) async {
+        guard browserTask === task else { return }
         if let id = json["id"] as? Int,
            let continuation = pendingResponses.removeValue(forKey: id) {
             if let error = json["error"] as? [String: Any] {
@@ -214,8 +219,8 @@ actor FingerprintInjector {
         }
     }
 
-    private func handleBrowserDisconnect() {
-        guard browserTask != nil else { return }
+    private func handleBrowserDisconnect(task: URLSessionWebSocketTask) {
+        guard browserTask === task else { return }
         closeBrowserConnection()
         if !disconnected {
             state = .idle
@@ -281,6 +286,7 @@ actor FingerprintInjector {
             params: ["expression": fingerprintScript],
             sessionID: sessionID
         )
+        guard browserTask === task, !disconnected else { return }
         injectedTargetIDs.insert(targetID)
         state = .injected
         print("[Fingerprint] 注入成功 port=\(debugPort) target=\(targetID)")
@@ -292,7 +298,7 @@ actor FingerprintInjector {
         params: [String: Any],
         sessionID: String? = nil
     ) async throws {
-        if disconnected { throw InjectorError.connectionClosed }
+        guard !disconnected, browserTask === task else { throw InjectorError.connectionClosed }
         let id = nextCommandID
         nextCommandID += 1
 
@@ -347,6 +353,8 @@ actor FingerprintInjector {
         reconnectTask = nil
         browserTask?.cancel(with: .normalClosure, reason: nil)
         browserTask = nil
+        injectedTargetIDs.removeAll()
+        attachingTargetIDs.removeAll()
         for (_, continuation) in pendingResponses {
             continuation.resume(throwing: InjectorError.connectionClosed)
         }

@@ -18,8 +18,16 @@ struct Profile: Codable, Identifiable {
         self.lastUsed = lastUsed
     }
 
+    /// Only for newly created environments; decoding and disk recovery retain legacy defaults.
+    static func newEnvironment(folder: String) -> Profile {
+        Profile(folder: folder, displayName: "", collectorDebugEnabled: true)
+    }
+
     var instanceNumber: Int {
-        Int(folder.dropFirst()) ?? 0
+        guard folder.first == "p", !folder.dropFirst().isEmpty,
+              folder.dropFirst().allSatisfy({ $0.isASCII && $0.isNumber }),
+              let number = Int(folder.dropFirst()), number > 0 else { return 0 }
+        return number
     }
 
     var displayText: String {
@@ -65,9 +73,9 @@ struct AppConfig: Codable {
 
     static let `default` = AppConfig(
         profiles: [
-            Profile(folder: "p1", displayName: "", note: ""),
-            Profile(folder: "p2", displayName: "", note: ""),
-            Profile(folder: "p3", displayName: "", note: "")
+            .newEnvironment(folder: "p1"),
+            .newEnvironment(folder: "p2"),
+            .newEnvironment(folder: "p3")
         ]
     )
 }
@@ -75,6 +83,7 @@ struct AppConfig: Codable {
 struct ConfigLoadResult {
     let config: AppConfig
     let alert: ConfigLoadAlert?
+    var saveError: String? = nil
 }
 
 struct ConfigLoadAlert: Identifiable {
@@ -87,6 +96,7 @@ struct ConfigLoadAlert: Identifiable {
     let id = UUID()
     let recovery: Recovery
     let backupPath: String?
+    var saveError: String? = nil
 }
 
 /// ~/Library/Application Support/BrowserIsolator/
@@ -111,8 +121,12 @@ struct AppPaths {
 class ConfigStore {
     private let configURL: URL
 
-    init() {
-        self.configURL = AppPaths.configFile
+    private let profilesURL: URL
+    private var backupURL: URL { configURL.appendingPathExtension("bak") }
+
+    init(configURL: URL = AppPaths.configFile, profilesURL: URL = AppPaths.profilesDir) {
+        self.configURL = configURL
+        self.profilesURL = profilesURL
     }
 
     func load() -> ConfigLoadResult {
@@ -131,36 +145,61 @@ class ConfigStore {
             }
         }
 
-        if let backupConfig = decodeConfig(at: AppPaths.configBackupFile) {
-            try? save(backupConfig)
-            return ConfigLoadResult(config: backupConfig, alert: ConfigLoadAlert(recovery: .backup, backupPath: corruptPath))
+        if let backupConfig = decodeConfig(at: backupURL) {
+            return persistLoadedConfig(backupConfig, alert: ConfigLoadAlert(recovery: .backup, backupPath: corruptPath))
         }
 
         if let rebuilt = rebuildFromProfileDirectories() {
-            try? save(rebuilt)
-            return ConfigLoadResult(config: rebuilt, alert: ConfigLoadAlert(recovery: .disk, backupPath: corruptPath))
+            return persistLoadedConfig(rebuilt, alert: ConfigLoadAlert(recovery: .disk, backupPath: corruptPath))
         }
         if mainFileExists {
-            return ConfigLoadResult(config: .default, alert: ConfigLoadAlert(recovery: .defaults, backupPath: corruptPath))
+            return persistLoadedConfig(.default, alert: ConfigLoadAlert(recovery: .defaults, backupPath: corruptPath))
         }
-        return ConfigLoadResult(config: .default, alert: nil)
+        return persistLoadedConfig(.default, alert: nil)
+    }
+
+    // Persist before BrowserManager creates profile directories, so a restart does not
+    // mistake newly generated defaults for existing environments requiring disk recovery.
+    private func persistLoadedConfig(_ config: AppConfig, alert: ConfigLoadAlert?) -> ConfigLoadResult {
+        do {
+            try save(config)
+            return ConfigLoadResult(config: config, alert: alert)
+        } catch {
+            var recoveryAlert = alert
+            recoveryAlert?.saveError = error.localizedDescription
+            return ConfigLoadResult(config: config, alert: recoveryAlert, saveError: error.localizedDescription)
+        }
     }
 
     func save(_ config: AppConfig) throws {
-        AppPaths.ensureDirectories()
+        try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let data = try JSONEncoder().encode(config)
         let temporaryURL = configURL.appendingPathExtension("tmp")
         try data.write(to: temporaryURL, options: .atomic)
         let fm = FileManager.default
         if fm.fileExists(atPath: configURL.path) {
-            try? fm.removeItem(at: AppPaths.configBackupFile)
-            try fm.copyItem(at: configURL, to: AppPaths.configBackupFile)
+            try? fm.removeItem(at: backupURL)
+            try fm.copyItem(at: configURL, to: backupURL)
         }
         if fm.fileExists(atPath: configURL.path) {
             _ = try fm.replaceItemAt(configURL, withItemAt: temporaryURL)
         } else {
             try fm.moveItem(at: temporaryURL, to: configURL)
         }
+    }
+
+    /// Persist the removal before touching browser data. Roll back metadata if recycling fails.
+    func removingProfile(folder: String, from config: AppConfig, recycle: () throws -> Void) throws -> AppConfig {
+        var updated = config
+        updated.profiles.removeAll { $0.folder == folder }
+        try save(updated)
+        do {
+            try recycle()
+        } catch {
+            try save(config)
+            throw error
+        }
+        return updated
     }
 
     private func decodeConfig(at url: URL) -> AppConfig? {
@@ -176,10 +215,10 @@ class ConfigStore {
 
     private func rebuildFromProfileDirectories() -> AppConfig? {
         let fm = FileManager.default
-        let urls = (try? fm.contentsOfDirectory(at: AppPaths.profilesDir, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        let urls = (try? fm.contentsOfDirectory(at: profilesURL, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
         let profiles = urls.compactMap { url -> Profile? in
             let name = url.lastPathComponent
-            guard name.first == "p", Int(name.dropFirst()).map({ $0 > 0 }) == true,
+            guard Profile(folder: name, displayName: "").instanceNumber > 0,
                   let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey]),
                   values.isDirectory == true else { return nil }
             return Profile(folder: name, displayName: "", lastUsed: values.contentModificationDate)

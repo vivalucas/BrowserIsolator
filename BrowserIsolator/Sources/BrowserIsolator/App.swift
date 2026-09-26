@@ -582,9 +582,14 @@ struct MainView: View {
         case .disk: key = "config_load.recovered_disk"
         case .defaults: key = "config_load.recovered_defaults"
         }
-        let message = l10n.t(key)
-        guard let path = alert.backupPath else { return message }
-        return "\(message)\n\n\(l10n.format("config_load.corrupt_path", path))"
+        var message = l10n.t(key)
+        if let path = alert.backupPath {
+            message += "\n\n\(l10n.format("config_load.corrupt_path", path))"
+        }
+        if let error = alert.saveError {
+            message += "\n\n\(l10n.t("config_save.title"))\n\(error)"
+        }
+        return message
     }
 
     @ViewBuilder
@@ -2130,9 +2135,11 @@ struct FingerprintModeManagerView: View {
                     Button(l10n.t("settings.collector_enable_all")) {
                         manager.updateCollectorDebugEnabled(for: filteredProfiles, isEnabled: true)
                     }
+                    .disabled(!filteredProfiles.contains { manager.canChangeFingerprintMode(for: $0) && !$0.collectorDebugEnabled })
                     Button(l10n.t("settings.collector_disable_all")) {
                         manager.updateCollectorDebugEnabled(for: filteredProfiles, isEnabled: false)
                     }
+                    .disabled(!filteredProfiles.contains { manager.canChangeFingerprintMode(for: $0) && $0.collectorDebugEnabled })
                     Spacer()
                 }
                 .controlSize(.small)

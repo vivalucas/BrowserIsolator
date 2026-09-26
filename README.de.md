@@ -14,7 +14,7 @@ BrowserIsolator verfolgt ein klares Ziel: lokale Browser-Umgebungen zuverlässig
 - **Gemerkter Aufbau**: Größe und Position des Hauptfensters sowie die Breite der Seitenleiste werden beim nächsten Öffnen wiederhergestellt
 - **Eigene Namen und Notizen**: Umgebungen benennen und kurze Notizen für Konto, Kunde oder Zweck hinterlegen
 - **Sicheres Löschen**: beim Löschen muss der Umgebungsname eingegeben werden; die Daten werden in den Papierkorb verschoben
-- **Basismodus zuerst**: standardmäßig wird nur das Profil getrennt, ohne Debug-Port oder Skript-Injektion in Seiten
+- **Neue Umgebungen unterstützen die Datenerfassung**: standardmäßig mit lokalem CDP-Port an `127.0.0.1`, ohne Skript-Injektion; bestehende Einstellungen bleiben erhalten
 - **Optionaler Variationsmodus**: pro Umgebung in den Einstellungen aktivierbar; aktivierte Umgebungen injizieren beim nächsten Start `navigator.hardwareConcurrency` und `navigator.deviceMemory`
 - **Externe Links**: BrowserIsolator als Standardbrowser setzen und festlegen, welche Umgebung Links aus anderen Apps öffnet; ist kein Ziel verfügbar, zeigt die App eine Meldung statt den Link zu verlieren
 - **Automatische Browser-Installation**: offizielles Google Chrome wird beim ersten Start geladen
@@ -112,7 +112,7 @@ Nein, das kann nicht garantiert werden. BrowserIsolator konzentriert sich auf lo
 
 ### Was macht der Variationsmodus?
 
-Standardmäßig wird nichts injiziert. BrowserIsolator priorisiert den Basismodus und trennt nur lokale Profildaten.
+Neue Umgebungen, auch beim ersten Start, aktivieren standardmäßig den Collector-Modus. Dieser erlaubt lokalen Tools die Verbindung, startet aber keine Datenerfassung und injiziert keine Skripte. Bestehende Umgebungen behalten ihre Einstellungen; fehlt das Collector-Feld in alten Konfigurationen, bleibt es deaktiviert. Der Collector-Modus lässt sich in den Einstellungen ausschalten. Der Variationsmodus bleibt standardmäßig aus.
 
 Wenn der Variationsmodus in den Einstellungen aktiviert ist, setzt BrowserIsolator beim nächsten Start über Chrome DevTools Protocol `navigator.hardwareConcurrency` und `navigator.deviceMemory` je Umgebung. Aktuelle page targets werden regelmäßig synchronisiert, daher werden auch neue Tabs injiziert. Das ist keine vollständige Gerätesimulation.
 

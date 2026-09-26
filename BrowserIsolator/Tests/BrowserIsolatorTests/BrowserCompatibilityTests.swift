@@ -2,6 +2,40 @@ import XCTest
 @testable import BrowserIsolator
 
 final class BrowserCompatibilityTests: XCTestCase {
+    func testNewEnvironmentsEnableOnlyCollector() {
+        let profiles = AppConfig.default.profiles + [.newEnvironment(folder: "p7")]
+        XCTAssertEqual(AppConfig.default.profiles.map(\.folder), ["p1", "p2", "p3"])
+        for profile in profiles {
+            XCTAssertTrue(profile.collectorDebugEnabled)
+            XCTAssertFalse(profile.fingerprintEnabled)
+            XCTAssertEqual(preferredDebugPort(for: profile), 41000 + profile.instanceNumber)
+        }
+    }
+
+    func testLegacyAndSavedModesRemainUnchanged() throws {
+        for fingerprint in [false, true] {
+            for collector in [nil, false, true] as [Bool?] {
+                var json: [String: Any] = ["folder": "p7", "fingerprintEnabled": fingerprint]
+                if let collector { json["collectorDebugEnabled"] = collector }
+                let data = try JSONSerialization.data(withJSONObject: json)
+                let profile = try JSONDecoder().decode(Profile.self, from: data)
+                XCTAssertEqual(profile.collectorDebugEnabled, collector ?? false)
+                XCTAssertEqual(profile.fingerprintEnabled, fingerprint)
+                let reloaded = try JSONDecoder().decode(Profile.self, from: JSONEncoder().encode(profile))
+                XCTAssertEqual(reloaded.collectorDebugEnabled, collector ?? false)
+                XCTAssertEqual(reloaded.fingerprintEnabled, fingerprint)
+            }
+        }
+    }
+
+    func testNewEnvironmentCollectorCanBeDisabledAndPersisted() throws {
+        var profile = Profile.newEnvironment(folder: "p7")
+        profile.collectorDebugEnabled = false
+        let reloaded = try JSONDecoder().decode(Profile.self, from: JSONEncoder().encode(profile))
+        XCTAssertFalse(reloaded.collectorDebugEnabled)
+        XCTAssertNil(preferredDebugPort(for: reloaded))
+    }
+
     func testCollectorAndVariationPortRulesMatchWindows() {
         let base = Profile(folder: "p7", displayName: "")
         XCTAssertNil(preferredDebugPort(for: base))

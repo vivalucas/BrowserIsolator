@@ -34,8 +34,10 @@ enum BrowserError: LocalizedError {
 }
 
 func preferredDebugPort(for profile: Profile) -> Int? {
-    if profile.collectorDebugEnabled { return 41000 + profile.instanceNumber }
-    if profile.fingerprintEnabled { return 40000 + profile.instanceNumber }
+    // Keep malformed / very large IDs outside the valid port range without overflowing.
+    let number = min(max(profile.instanceNumber, 1), 65536)
+    if profile.collectorDebugEnabled { return 41000 + number }
+    if profile.fingerprintEnabled { return 40000 + number }
     return nil
 }
 
@@ -159,6 +161,9 @@ class BrowserManager: ObservableObject {
         let loadResult = configStore.load()
         self.config = loadResult.config
         self.configLoadAlert = loadResult.alert
+        if let saveError = loadResult.saveError, loadResult.alert == nil {
+            self.configSaveAlert = ConfigSaveAlert(message: saveError)
+        }
         self.profileLastUsed = loadResult.config.profiles.reduce(into: [:]) { result, profile in
             if let lastUsed = profile.lastUsed { result[profile.folder] = lastUsed }
         }
@@ -192,6 +197,8 @@ class BrowserManager: ObservableObject {
                     let process = launchProfileProcess(profile, additionalArguments: urls.map(\.absoluteString))
                     try process.run()
                 } catch {
+                    profileErrors[profile.folder] = error.localizedDescription
+                    if let url = urls.first { externalLinkAlert = ExternalLinkAlert(kind: .link(url)) }
                     print("[BrowserIsolator] 向已运行环境 \(profile.folder) 打开链接失败: \(error)")
                 }
             }
@@ -210,9 +217,9 @@ class BrowserManager: ObservableObject {
                 debugPort: debugPort,
                 additionalArguments: urls.map(\.absoluteString)
             )
-            process.terminationHandler = { [weak self, folder = profile.folder] _ in
+            process.terminationHandler = { [weak self, folder = profile.folder] terminated in
                 Task { @MainActor in
-                    self?.handleProcessTerminated(folder)
+                    self?.handleProcessTerminated(folder, process: terminated)
                 }
             }
             try process.run()
@@ -233,6 +240,7 @@ class BrowserManager: ObservableObject {
             // 启动成功，延迟移除 starting 状态，让用户能看到反馈
             Task { [weak self, profile] in
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard self?.processes[profile.folder] === process else { return }
                 self?.startingProfiles.remove(profile.folder)
                 if let queuedURLs = self?.pendingExternalURLs.removeValue(forKey: profile.folder),
                    !queuedURLs.isEmpty {
@@ -244,6 +252,7 @@ class BrowserManager: ObservableObject {
             debugPorts.removeValue(forKey: profile.folder)
             pendingExternalURLs.removeValue(forKey: profile.folder)
             profileErrors[profile.folder] = error.localizedDescription
+            if let url = urls.first { externalLinkAlert = ExternalLinkAlert(kind: .link(url)) }
             print("[BrowserIsolator] 启动环境 \(profile.folder) 失败: \(error)")
         }
     }
@@ -279,14 +288,14 @@ class BrowserManager: ObservableObject {
     }
 
     private func isPortAvailable(_ port: Int) -> Bool {
-        if debugPorts.values.contains(port) { return false }
+        guard (1...65535).contains(port), !debugPorts.values.contains(port) else { return false }
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = UInt16(port).bigEndian
         addr.sin_addr.s_addr = UInt32(0x7F000001).bigEndian // 127.0.0.1
 
         let sock = socket(AF_INET, SOCK_STREAM, 0)
-        guard sock >= 0 else { return true }
+        guard sock >= 0 else { return false }
         defer { close(sock) }
 
         let result = withUnsafePointer(to: &addr) { ptr in
@@ -298,6 +307,7 @@ class BrowserManager: ObservableObject {
     }
 
     func stopProfile(_ profile: Profile) {
+        guard !stoppingProfiles.contains(profile.folder) else { return }
         startingProfiles.remove(profile.folder)
         pendingExternalURLs.removeValue(forKey: profile.folder)
         if let injector = fingerprintInjectors.removeValue(forKey: profile.folder) {
@@ -315,6 +325,7 @@ class BrowserManager: ObservableObject {
         kill(pid, SIGTERM)
         Task { [weak self, folder = profile.folder] in
             await Self.waitForProcessExit(process, pid: pid, timeout: 5)
+            guard self?.processes[folder] === process else { return }
             self?.finishStoppedProfile(folder)
         }
     }
@@ -344,7 +355,8 @@ class BrowserManager: ObservableObject {
                     }
                 }
             }
-            self?.finishStoppedProfiles(stoppedFolders)
+            let currentFolders = stoppedFolders.filter { self?.processes[$0] === processesToStop[$0] }
+            self?.finishStoppedProfiles(currentFolders)
         }
     }
 
@@ -436,8 +448,12 @@ class BrowserManager: ObservableObject {
         }
     }
 
-    private func handleProcessTerminated(_ folder: String) {
-        pendingExternalURLs.removeValue(forKey: folder)
+    private func handleProcessTerminated(_ folder: String, process: Process) {
+        guard processes[folder] === process else { return }
+        startingProfiles.remove(folder)
+        if let url = pendingExternalURLs.removeValue(forKey: folder)?.first {
+            externalLinkAlert = ExternalLinkAlert(kind: .link(url))
+        }
         if let injector = fingerprintInjectors.removeValue(forKey: folder) {
             Task { await injector.disconnect() }
         }
@@ -450,7 +466,7 @@ class BrowserManager: ObservableObject {
     @discardableResult
     func addProfile() -> Profile {
         let folder = "p\(nextAvailableProfileNumber())"
-        let profile = Profile(folder: folder, displayName: "")
+        let profile = Profile.newEnvironment(folder: folder)
         config.profiles.append(profile)
         let dir = AppPaths.profilesDir.appendingPathComponent(folder)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -471,21 +487,25 @@ class BrowserManager: ObservableObject {
         pendingExternalURLs.removeValue(forKey: profile.folder)
         let dir = AppPaths.profilesDir.appendingPathComponent(profile.folder)
         do {
-            if FileManager.default.fileExists(atPath: dir.path) {
-                var trashedURL: NSURL?
-                try FileManager.default.trashItem(at: dir, resultingItemURL: &trashedURL)
+            config = try configStore.removingProfile(folder: profile.folder, from: config) {
+                if FileManager.default.fileExists(atPath: dir.path) {
+                    var trashedURL: NSURL?
+                    try FileManager.default.trashItem(at: dir, resultingItemURL: &trashedURL)
+                }
             }
+            configSaveAlert = nil
         } catch {
             profileErrors[profile.folder] = error.localizedDescription
             print("[BrowserIsolator] 删除环境 \(profile.folder) 失败: \(error)")
             return
         }
-        config.profiles.removeAll { $0.folder == profile.folder }
+        if UserDefaults.standard.string(forKey: Self.defaultOpenProfileFolderKey) == profile.folder {
+            UserDefaults.standard.removeObject(forKey: Self.defaultOpenProfileFolderKey)
+        }
         profileSizes.removeValue(forKey: profile.folder)
         profileLastUsed.removeValue(forKey: profile.folder)
 
         profileErrors.removeValue(forKey: profile.folder)
-        saveConfig()
         scanProfileInfo()
     }
 
@@ -538,7 +558,7 @@ class BrowserManager: ObservableObject {
         if let profile = config.profiles.first(where: { $0.folder == storedFolder }) {
             return profile
         }
-        return config.profiles.first
+        return config.profiles.min { $0.instanceNumber < $1.instanceNumber }
     }
 
     func clearProfileError(_ profile: Profile) {
@@ -632,6 +652,10 @@ class BrowserManager: ObservableObject {
             externalLinkAlert = ExternalLinkAlert(kind: .noAvailableProfile(validURLs[0]))
             return
         }
+        if stoppingProfiles.contains(profile.folder) {
+            externalLinkAlert = ExternalLinkAlert(kind: .link(validURLs[0]))
+            return
+        }
         if startingProfiles.contains(profile.folder) {
             pendingExternalURLs[profile.folder, default: []].append(contentsOf: validURLs)
             return
@@ -681,7 +705,7 @@ class BrowserManager: ObservableObject {
 
                 // 2. 挂载 dmg 并直接安装
                 downloadState = .extracting
-                try await mountAndInstallChrome(from: tempDMG)
+                try await Task.detached { try Self.mountAndInstallChrome(from: tempDMG) }.value
 
                 downloadState = .verifying
                 try validateChromiumExecutable()
@@ -778,7 +802,7 @@ class BrowserManager: ObservableObject {
     }
 
     /// 挂载 DMG 并直接安装 Chrome（省去中间拷贝，节省磁盘空间）
-    private func mountAndInstallChrome(from dmgPath: URL) async throws {
+    private nonisolated static func mountAndInstallChrome(from dmgPath: URL) throws {
         let fm = FileManager.default
         let mountPoint = fm.temporaryDirectory
             .appendingPathComponent("chrome-mount-\(UUID().uuidString)")
@@ -837,7 +861,10 @@ class BrowserManager: ObservableObject {
             try? xattrProcess.run()
             xattrProcess.waitUntilExit()
 
-            try validateChromiumExecutable()
+            let executable = targetApp.appendingPathComponent("Contents/MacOS/Google Chrome")
+            guard fm.isExecutableFile(atPath: executable.path) else {
+                throw BrowserError.chromiumNotReady("Google Chrome 可执行文件不可用")
+            }
             // 安装成功，删除备份
             try? fm.removeItem(at: backupDir)
         } catch {

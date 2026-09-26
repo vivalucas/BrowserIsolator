@@ -14,7 +14,7 @@ BrowserIsolator a un objectif précis : isoler proprement les environnements de 
 - **Disposition mémorisée** : la taille et la position de la fenêtre principale, ainsi que la largeur de la barre latérale, sont restaurées à la prochaine ouverture
 - **Noms et notes** : nommer les environnements et ajouter une courte note pour un compte, un client ou un usage
 - **Suppression sûre** : la suppression demande de saisir le nom de l'environnement, puis déplace les données dans la corbeille
-- **Mode de base par défaut** : seul le profil est isolé, sans port de débogage ni injection de script dans les pages
+- **Collecte activée pour les nouveaux environnements** : port CDP local lié à `127.0.0.1`, sans injection de script ; les réglages existants sont conservés
 - **Mode variation optionnel** : activable par environnement dans les réglages ; les environnements activés injectent `navigator.hardwareConcurrency` et `navigator.deviceMemory` au prochain lancement
 - **Liens externes** : définir BrowserIsolator comme navigateur par défaut et choisir l'environnement qui reçoit les liens ouverts depuis d'autres apps ; si aucune cible n'est disponible, l'app affiche une alerte au lieu de perdre le lien
 - **Installation automatique du navigateur** : téléchargement de Google Chrome officiel au premier lancement
@@ -112,7 +112,7 @@ Non garanti. BrowserIsolator se concentre sur l'isolation locale et propose un m
 
 ### Que fait le mode variation ?
 
-Par défaut, rien n'est injecté. BrowserIsolator privilégie le mode de base et isole seulement les données locales du profil.
+Les nouveaux environnements, y compris ceux créés au premier lancement, activent le mode de collecte par défaut. Il permet aux outils locaux de se connecter, sans lancer de collecte ni injecter de script. Les environnements existants conservent leurs réglages ; si le champ de collecte manque dans une ancienne configuration, il reste désactivé. La collecte peut être désactivée dans les réglages. Le mode de variation reste désactivé par défaut.
 
 Si le mode variation est activé dans les réglages, le prochain lancement utilise Chrome DevTools Protocol pour définir `navigator.hardwareConcurrency` et `navigator.deviceMemory` par environnement. BrowserIsolator synchronise régulièrement les page targets actuelles, donc les nouveaux onglets sont aussi injectés. Ce n'est pas une simulation complète d'appareil.
 

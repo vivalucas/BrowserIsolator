@@ -14,7 +14,7 @@ BrowserIsolator has a narrow goal: reliable local browser-environment isolation.
 - **Remembered layout**: the main window size, position, and sidebar width are restored the next time the app opens
 - **Custom names and notes**: name a new environment immediately after creating it, rename it later, or add a short note for account, client, or workflow details
 - **Safe deletion**: deleting an environment requires typing its name, then its profile data is moved to Trash
-- **Basic Mode by default**: isolates profile data without a debug port or page script injection, keeping behavior close to normal Chrome
+- **Collection enabled for new environments**: new environments expose a local CDP port bound to `127.0.0.1` without page script injection; existing environments keep their settings, and collection can be disabled individually
 - **Optional Variation Mode**: enable lightweight variation per environment in Settings; enabled environments inject stable `navigator.hardwareConcurrency` and `navigator.deviceMemory` values on next launch
 - **External link routing**: set BrowserIsolator as the system default browser and choose which environment should receive links opened from other apps; if no target is available, the app prompts instead of dropping the link
 - **Automatic browser setup**: downloads official Google Chrome on first launch into the app's own data directory
@@ -162,7 +162,7 @@ No guarantee. BrowserIsolator focuses on local data isolation and offers light V
 
 ### What does Variation Mode do?
 
-By default, nothing is injected. BrowserIsolator prioritizes Basic Mode: it isolates local profile data without opening a debug port.
+New environments, including those created on first launch, enable Collector Mode by default. This permits local collection tools to connect; it does not start collection or inject page scripts. Existing environments retain their settings, and legacy configurations without the collector field still decode as disabled. You can disable collection under Settings → Collector & Variation Modes → Manage Modes. Variation Mode remains off by default.
 
 If you enable Variation Mode for an environment in Settings, the next launch uses Chrome DevTools Protocol to inject scripts that set:
 
