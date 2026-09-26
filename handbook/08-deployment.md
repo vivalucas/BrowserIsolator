@@ -8,8 +8,8 @@
 - 触发关系：普通 push 到 `main` 只运行 CI；推送 `v*` 标签会运行 Release workflow 并创建 GitHub Release。
 - 产物：arm64 `BrowserIsolator.dmg` 和由 Sparkle 工具签名的 `appcast.xml`。
 - 更新地址：`https://github.com/vivalucas/BrowserIsolator/releases/latest/download/appcast.xml`。
-- 当前源码版本：2.0.0（build 47），发布标签为 `v2.0.0`，发布结果以 GitHub Actions 与 Release 为准。
-- 当前发布版本：1.9.0（build 43）。发布应用使用 ad-hoc code signing，未做 Apple 公证。
+- 当前源码版本：2.0.0（build 47），发布标签为 `v2.0.0`，远端测试与发布流程成功。
+- 当前发布版本：[2.0.0（build 47）](https://github.com/vivalucas/BrowserIsolator/releases/tag/v2.0.0)。DMG 与签名 appcast 已上传，更新源版本和下载地址已核对；发行包安装与跨版本更新尚未验收。发布应用使用 ad-hoc code signing，未做 Apple 公证。
 
 ## 发布流程
 
