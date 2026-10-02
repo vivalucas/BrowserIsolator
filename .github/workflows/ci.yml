@@ -26,3 +26,11 @@ jobs:
       - name: Build release executable
         working-directory: BrowserIsolator
         run: swift build -c release -Xswiftc -target -Xswiftc arm64-apple-macosx13.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test native browser automation
+        env:
+          TEST_HARNESS: '["BrowserIsolator/.build/release/AutomationHarness"]'
+          TEST_CLI: '["BrowserIsolator/.build/release/isolator"]'
+        run: node automation/tests/integration.mjs

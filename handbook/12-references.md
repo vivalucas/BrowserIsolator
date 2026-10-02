@@ -18,3 +18,8 @@
 - CDP 无认证，因此必须仅监听 loopback。项目只使用 target 管理、Page 和 Runtime 相关能力，不把完整协议镜像进仓库。
 - Chrome 使用官方 Universal Stable DMG，但 BrowserIsolator 发布包仍仅支持 arm64。项目当前验证可执行文件和安装结果，尚未强校验 Team ID。
 - 外部服务地址、Sparkle API 或 GitHub Actions 版本变化时，以官方资料和当前锁文件为准，不沿用旧日志中的缓存描述。
+
+## 本地自动化协议依据
+
+- [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)：页面、DOM、AX、Input、Runtime、Network 与目标会话接口；浏览器兼容以真实场景测试为准。
+- [MCP 2025-11-25 Tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)：stdio 工具列表、调用与结构化/文本/图片结果；工具分组、图片显式开启及资源限额为本项目约定，见 [14](14-automation.md)。

@@ -202,3 +202,9 @@ If the browser environment is not ready yet, or if no usable environment exists,
 ### How many environments can run at once?
 
 There is no hard limit. Running no more than five at once is recommended, depending on memory, CPU, and the pages open in each environment.
+
+## Local CLI and AI Agents
+
+Version 2.1.0 adds the native `isolator` CLI and local MCP (older 2.0.0 packages do not include them; new artifacts depend on the tag build). Open **Settings → Automation** to check the local connection, copy the CLI path or MCP configuration, and view the connection guide. Use `isolator profile list` and `isolator page list --profile p1` to select an environment and page. Structure reading, actions, dynamic observation, full DOM/AX exports and screenshots are described in the [automation guide](handbook/14-automation.md).
+
+Screenshots return file paths by default. Interpreting images requires both a vision-capable model and an image-capable tool chain. Enable `--vision` only when both are supported; use text snapshots if support is unknown or images caused hangs. Existing configuration, ports and direct CDP consumers retain their contracts.

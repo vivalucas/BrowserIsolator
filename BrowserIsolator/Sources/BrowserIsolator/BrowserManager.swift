@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import ApplicationServices
 import Darwin
+import IsolatorCore
 
 // MARK: - 下载状态
 
@@ -73,6 +74,10 @@ class BrowserManager: ObservableObject {
 
     private let configStore = ConfigStore()
     private var processes: [String: Process] = [:]
+    private var automationGenerations: [String: String] = [:]
+    private var automationBroker: AutomationBroker?
+    private var automationServer: AutomationServer?
+    private var automationListenerError: String?
     private var fingerprintInjectors: [String: FingerprintInjector] = [:]
     private var debugPorts: [String: Int] = [:]
     private var pendingExternalURLs: [String: [URL]] = [:]
@@ -176,6 +181,7 @@ class BrowserManager: ObservableObject {
         }
 
         scanProfileInfo()
+        startAutomationService()
     }
 
     // MARK: - 启动 / 关闭
@@ -224,6 +230,7 @@ class BrowserManager: ObservableObject {
             }
             try process.run()
             processes[profile.folder] = process
+            automationGenerations[profile.folder] = UUID().uuidString
             if let debugPort {
                 debugPorts[profile.folder] = debugPort
             }
@@ -986,4 +993,141 @@ class BrowserManager: ObservableObject {
         }
         return total
     }
+}
+
+// Automation reuses this manager; it never reloads or rewrites configuration independently.
+extension BrowserManager {
+  var automationCLIPath: String {
+    Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("isolator").path ?? ""
+  }
+  var automationCLIAvailable: Bool { FileManager.default.isExecutableFile(atPath: automationCLIPath) }
+  var automationMCPConfiguration: String {
+    let config: J = ["mcpServers": ["isolator": ["command": .str(automationCLIPath), "args": ["mcp", "serve"]]]]
+    return config.text()
+  }
+  func automationDiagnostics() async -> J {
+    var result: J = ["serviceReachable": false, "cliPath": .str(automationCLIPath),
+                     "cliAvailable": .bool(automationCLIAvailable), "endpoint": .str(LocalTransport.socketPath),
+                     "profileCount": .int(config.profiles.count), "configurationChanged": false]
+    if let automationListenerError { result["listenerError"] = .str(automationListenerError) }
+    do {
+      let reply = try await Task.detached(priority: .utility) {
+        try LocalTransport.request(["id": .str(UUID().uuidString), "operation": "system.capabilities", "params": [:]], timeout: 3)
+      }.value
+      result["serviceReachable"] = reply["ok"]
+      result["protocol"] = reply["result"]["protocol"]
+      if !reply["ok"].b { result["error"] = reply["error"] }
+    } catch { result["error"] = .str(error.localizedDescription) }
+    return result
+  }
+  private func startAutomationService() {
+    let broker = AutomationBroker { [weak self] op, p in
+      guard let self else { throw AutomationError("app_stopping", "Application is stopping") }
+      return try await self.automationProfile(op, p)
+    }
+    let server = AutomationServer { request in await broker.handle(request) }
+    do {
+      try server.start()
+      automationBroker = broker
+      automationServer = server
+      automationListenerError = nil
+    } catch {
+      automationListenerError = error.localizedDescription
+      NSLog("[BrowserIsolator] Automation listener unavailable: %@", error.localizedDescription)
+    }
+  }
+  func stopAutomationService() {
+    automationServer?.stop()
+    automationServer = nil
+    let broker = automationBroker
+    automationBroker = nil
+    Task { await broker?.shutdown() }
+  }
+  private func automationInfo(_ profile: Profile) -> J {
+    let running = processes[profile.folder]?.isRunning == true
+    var result: J = [
+      "profile": .str(profile.folder), "name": .str(profile.displayName), "running": .bool(running),
+      "starting": .bool(startingProfiles.contains(profile.folder)),
+      "stopping": .bool(stoppingProfiles.contains(profile.folder)),
+      "debugEnabled": .bool(profile.collectorDebugEnabled || profile.fingerprintEnabled),
+      "collectorDebugEnabled": .bool(profile.collectorDebugEnabled),
+      "variationEnabled": .bool(profile.fingerprintEnabled), "browserReady": .bool(chromiumReady),
+    ]
+    if running {
+      result["generation"] = .str(automationGenerations[profile.folder] ?? "")
+      result["pid"] = .int(Int(processes[profile.folder]!.processIdentifier))
+      if let port = debugPorts[profile.folder] {
+        result["port"] = .int(port)
+        result["endpoint"] = .str("http://127.0.0.1:\(port)")
+      }
+    }
+    if let error = profileErrors[profile.folder] { result["lastError"] = .str(error) }
+    return result
+  }
+  private func automationProfile(_ op: String, _ p: J) async throws -> J {
+    if op == "profile.list" {
+      let offset = min(max(0, p["offset"].i), config.profiles.count)
+      let limit = min(max(p["limit"].i == 0 ? 40 : p["limit"].i, 1), 500)
+      let selected = Array(config.profiles.dropFirst(offset).prefix(limit))
+      return [
+        "profiles": .array(selected.map(automationInfo)), "total": .int(config.profiles.count),
+        "offset": .int(offset),
+        "nextOffset": offset + selected.count < config.profiles.count
+          ? .int(offset + selected.count) : nil,
+      ]
+    }
+    guard let profile = config.profiles.first(where: { $0.folder == p["profile"].s }) else {
+      throw AutomationError("profile_not_found", "Select a folder returned by profile list")
+    }
+    if !p["generation"].s.isEmpty && p["generation"].s != automationGenerations[profile.folder] {
+      throw AutomationError("stale_session", "Browser instance changed")
+    }
+    if op == "profile.start" {
+      guard chromiumReady else {
+        throw AutomationError(
+          "browser_not_ready", "Browser is not ready; use the app to complete browser setup")
+      }
+      guard !stoppingProfiles.contains(profile.folder) else {
+        throw AutomationError("profile_stopping", "Wait for the current stop to finish")
+      }
+      startProfile(profile)
+      guard processes[profile.folder]?.isRunning == true else {
+        throw AutomationError(
+          "start_failed", profileErrors[profile.folder] ?? "Browser did not start")
+      }
+    }
+    if op == "profile.stop" {
+      stopProfile(profile)
+      for _ in 0..<70 {
+        if processes[profile.folder]?.isRunning != true { break }
+        try await Task.sleep(nanoseconds: 100_000_000)
+      }
+      guard processes[profile.folder]?.isRunning != true else {
+        throw AutomationError("stop_timeout", "Browser is still stopping")
+      }
+    }
+    let info = automationInfo(profile)
+    if op == "profile.resolve" || op == "profile.endpoint" {
+      guard !info["stopping"].b else {
+        throw AutomationError("profile_stopping", "Wait for stop to finish")
+      }
+      guard info["running"].b else {
+        throw AutomationError(
+          "profile_not_running", "Start this environment in the app or with profile start")
+      }
+      guard info["port"].i > 0 else {
+        throw AutomationError(
+          "debug_disabled",
+          "Enable collection/debug mode in the app, then restart this environment; automation does not change modes"
+        )
+      }
+    }
+    if op == "profile.doctor" {
+      var result = info
+      result["readyForPageTools"] = .bool(info["running"].b && info["port"].i > 0)
+      result["configurationChanged"] = false
+      return result
+    }
+    return info
+  }
 }

@@ -8,8 +8,8 @@
 - 触发关系：普通 push 到 `main` 只运行 CI；推送 `v*` 标签会运行 Release workflow 并创建 GitHub Release。
 - 产物：arm64 `BrowserIsolator.dmg` 和由 Sparkle 工具签名的 `appcast.xml`。
 - 更新地址：`https://github.com/vivalucas/BrowserIsolator/releases/latest/download/appcast.xml`。
-- 当前源码版本：2.0.0（build 47），发布标签为 `v2.0.0`，远端测试与发布流程成功。
-- 当前发布版本：[2.0.0（build 47）](https://github.com/vivalucas/BrowserIsolator/releases/tag/v2.0.0)。DMG 与签名 appcast 已上传，更新源版本和下载地址已核对；发行包安装与跨版本更新尚未验收。发布应用使用 ad-hoc code signing，未做 Apple 公证。
+- 当前源码版本：2.1.0（build 48），发行标签为 `v2.1.0`；本次推送后不等待远端构建完成。
+- 最近已核验的发布版本：[2.0.0（build 47）](https://github.com/vivalucas/BrowserIsolator/releases/tag/v2.0.0)。DMG 与签名 appcast 已上传，更新源版本和下载地址已核对；发行包安装与跨版本更新尚未验收。发布应用使用 ad-hoc code signing，未做 Apple 公证。
 
 ## 发布流程
 
@@ -32,3 +32,7 @@
 ## 验证边界
 
 CI 使用 `macos-14` 并显式选择 Xcode 16.2（Swift 6）；发布目标是 `arm64-apple-macosx13.0`。真实 macOS 13、Sparkle 跨版本更新、Gatekeeper、Chrome 下载和系统默认浏览器行为仍需要人工验证。Intel Mac、Windows 和 Ubuntu 不在发布范围。
+
+## CLI 随包发行
+
+macOS 的本地和 Release 打包均复制 `isolator` 至 Contents/MacOS，并复制 SwiftPM 核心资源 bundle 至 Contents/Resources，随应用一起签名。Windows publish 在同一输出目录发布 GUI 与独立控制台 CLI，资源嵌入程序集；ZIP 与 MSI 的现有文件收集逻辑一并包含 CLI。2.1.0 通过同版本标签触发发行构建；构建成功与安装验收需另行确认。接入见 [14](14-automation.md)。

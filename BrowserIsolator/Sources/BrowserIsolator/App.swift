@@ -479,6 +479,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
+        BrowserManager.shared?.stopAutomationService()
         BrowserManager.shared?.stopAllAndWait()
     }
 }
@@ -1853,6 +1854,21 @@ struct SettingsView: View {
     @AppStorage("DefaultOpenProfileFolder") private var defaultOpenProfileFolder: String = ""
     @State private var showFingerprintManager = false
     @State private var showRedownloadChromeConfirm = false
+    @State private var automationChecking = true
+    @State private var automationReady = false
+    @State private var automationCopyFailed = false
+
+    private func copyAutomationText(_ text: String) {
+        NSPasteboard.general.clearContents()
+        automationCopyFailed = !NSPasteboard.general.setString(text, forType: .string)
+    }
+    private func refreshAutomation(copy: Bool) async {
+        automationChecking = true
+        let diagnostic = await manager.automationDiagnostics()
+        automationReady = diagnostic["serviceReachable"].b
+        automationChecking = false
+        if copy { copyAutomationText(diagnostic.text()) }
+    }
 
     private var fingerprintEnabledCount: Int {
         manager.config.profiles.filter(\.fingerprintEnabled).count
@@ -1973,6 +1989,38 @@ struct SettingsView: View {
                         }
                     }
 
+                    SettingsSection(title: l10n.t("automation.title"), systemImage: "terminal") {
+                        SettingsLine(label: l10n.t("automation.status"), value: l10n.t(automationChecking ? "automation.checking" : automationReady ? "automation.ready" : "automation.unavailable"))
+                        SettingsDivider()
+                        SettingsLine(label: l10n.t("automation.cli"), value: manager.automationCLIPath)
+                        if !manager.automationCLIAvailable {
+                            Text(l10n.t("automation.missing"))
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true).padding(.vertical, 7)
+                        }
+                        SettingsButtonRow {
+                            Button(l10n.t("automation.copy_cli")) { copyAutomationText(manager.automationCLIPath) }
+                                .disabled(!manager.automationCLIAvailable)
+                            Button(l10n.t("automation.copy_mcp")) { copyAutomationText(manager.automationMCPConfiguration) }
+                                .disabled(!manager.automationCLIAvailable)
+                            Button(l10n.t("automation.diagnose")) { Task { await refreshAutomation(copy: true) } }
+                                .disabled(automationChecking)
+                        }
+                        SettingsDivider()
+                        DisclosureGroup(l10n.t("automation.help")) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(l10n.t("automation.usage"))
+                                Text("isolator profile list\nisolator page list --profile p1")
+                                    .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                                Text(l10n.t("automation.vision"))
+                            }
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true).padding(.vertical, 7)
+                        }
+                        .padding(.vertical, 7)
+                        if automationCopyFailed { Text(l10n.t("automation.copy_failed")).foregroundStyle(.secondary) }
+                    }
+
                     SettingsSection(title: l10n.t("settings.about_support"), systemImage: "questionmark.circle") {
                         SettingsLine(label: l10n.t("settings.app_version"), value: manager.currentVersion)
                         SettingsButtonRow {
@@ -2020,6 +2068,7 @@ struct SettingsView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .frame(width: 680, height: 720)
         .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
+        .task { await refreshAutomation(copy: false) }
         .onAppear {
             applyAppAppearance(AppAppearance(rawValue: appAppearance) ?? .system)
         }

@@ -1,0 +1,309 @@
+{
+  "protocol": "isolator.local/1",
+  "defaults": {
+    "maxChars": 6000,
+    "limit": 40,
+    "snapshotTtlSeconds": 600,
+    "maxSide": 1600,
+    "imageBytes": 2097152,
+    "watchSeconds": 30,
+    "watchMaximumSeconds": 300,
+    "watchHistoryLimit": 16,
+    "watchHistoryBytes": 2097152,
+    "watchResultBytes": 262144,
+    "watchEventBytes": 2097152
+  },
+  "operations": [
+    "system.capabilities",
+    "profile.list",
+    "profile.get",
+    "profile.start",
+    "profile.stop",
+    "profile.endpoint",
+    "profile.doctor",
+    "page.list",
+    "page.open",
+    "page.close",
+    "page.navigate",
+    "page.snapshot",
+    "page.text",
+    "page.expand",
+    "page.search",
+    "page.inspect",
+    "page.capture",
+    "page.screenshot",
+    "page.click",
+    "page.fill",
+    "page.key",
+    "page.hover",
+    "page.select",
+    "page.check",
+    "page.scroll",
+    "page.upload",
+    "page.evaluate",
+    "page.wait",
+    "watch.start",
+    "watch.get",
+    "watch.cancel",
+    "diagnostics.get"
+  ],
+  "required": {
+    "profile.get": [
+      "profile"
+    ],
+    "profile.start": [
+      "profile"
+    ],
+    "profile.stop": [
+      "profile"
+    ],
+    "profile.endpoint": [
+      "profile"
+    ],
+    "profile.doctor": [
+      "profile"
+    ],
+    "page.open": [
+      "profile",
+      "url"
+    ],
+    "page.list": [
+      "profile"
+    ],
+    "watch.get": [
+      "profile",
+      "watch"
+    ],
+    "watch.cancel": [
+      "profile",
+      "watch"
+    ],
+    "page.close": [
+      "profile",
+      "tab"
+    ],
+    "page.navigate": [
+      "profile",
+      "tab",
+      "url"
+    ],
+    "page.snapshot": [
+      "profile",
+      "tab"
+    ],
+    "page.text": [
+      "profile",
+      "tab"
+    ],
+    "page.expand": [
+      "profile",
+      "tab"
+    ],
+    "page.search": [
+      "profile",
+      "tab"
+    ],
+    "page.inspect": [
+      "profile",
+      "tab"
+    ],
+    "page.capture": [
+      "profile",
+      "tab",
+      "output"
+    ],
+    "page.screenshot": [
+      "profile",
+      "tab",
+      "output"
+    ],
+    "page.click": [
+      "profile",
+      "tab"
+    ],
+    "page.fill": [
+      "profile",
+      "tab",
+      "value"
+    ],
+    "page.key": [
+      "profile",
+      "tab",
+      "key"
+    ],
+    "page.hover": [
+      "profile",
+      "tab"
+    ],
+    "page.select": [
+      "profile",
+      "tab"
+    ],
+    "page.check": [
+      "profile",
+      "tab",
+      "checked"
+    ],
+    "page.scroll": [
+      "profile",
+      "tab"
+    ],
+    "page.upload": [
+      "profile",
+      "tab"
+    ],
+    "page.evaluate": [
+      "profile",
+      "tab",
+      "expression"
+    ],
+    "page.wait": [
+      "profile",
+      "tab"
+    ],
+    "watch.start": [
+      "profile",
+      "tab"
+    ]
+  },
+  "notice": "Screenshot generation does not require vision. Interpreting an image requires a vision-capable model and an image-capable tool chain. Unknown capability or prior image hangs: use text snapshots and element details.",
+  "parameterSchema": {
+    "type": "object",
+    "properties": {
+      "profile": {
+        "type": "string"
+      },
+      "tab": {
+        "type": "string"
+      },
+      "generation": {
+        "type": "string"
+      },
+      "snapshot": {
+        "type": "string"
+      },
+      "ref": {
+        "type": "string"
+      },
+      "selector": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "frame": {
+        "type": "string"
+      },
+      "root": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string"
+      },
+      "view": {
+        "type": "string"
+      },
+      "fields": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "urlContains": {
+        "type": "string"
+      },
+      "value": {
+        "type": "string"
+      },
+      "key": {
+        "type": "string"
+      },
+      "expression": {
+        "type": "string"
+      },
+      "output": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "requestId": {
+        "type": "string"
+      },
+      "offset": {
+        "type": "integer"
+      },
+      "limit": {
+        "type": "integer"
+      },
+      "maxChars": {
+        "type": "integer"
+      },
+      "maxNodes": {
+        "type": "integer"
+      },
+      "maxCaptureBytes": {
+        "type": "integer"
+      },
+      "timeout": {
+        "type": "integer"
+      },
+      "maxSide": {
+        "type": "integer"
+      },
+      "x": {
+        "type": "integer"
+      },
+      "y": {
+        "type": "integer"
+      },
+      "includeHidden": {
+        "type": "boolean"
+      },
+      "live": {
+        "type": "boolean"
+      },
+      "observe": {
+        "type": "boolean"
+      },
+      "checked": {
+        "type": "boolean"
+      },
+      "fullPage": {
+        "type": "boolean"
+      },
+      "overwrite": {
+        "type": "boolean"
+      },
+      "files": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "styles": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "until": {
+        "type": "object",
+        "description": "Explicit completion condition: selector/role/name/ref plus state (visible, hidden, absent, enabled, checked, text), text, value or urlContains."
+      },
+      "text": {
+        "type": "string"
+      },
+      "watch": {
+        "type": "string"
+      },
+      "cursor": {
+        "type": "integer"
+      }
+    },
+    "additionalProperties": false
+  }
+}

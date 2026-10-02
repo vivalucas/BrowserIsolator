@@ -211,3 +211,11 @@ BrowserIsolator 使用独立的官方 Google Chrome 副本，不读取系统里�
 ## 开发文档
 
 项目结构、配置兼容、测试、发布和设计决策见 [handbook 开发导航](handbook/README.md)。
+
+## 本地 CLI 与 AI Agent
+
+2.1.0 新增 `isolator` CLI（旧 2.0.0 发行包不包含此入口；新产物以标签构建结果为准）和本地 MCP，可查询/启动现有环境、读取和展开网页结构、操作页面、等待/观察动态变化、导出完整详情及截图。macOS CLI 位于应用包 `Contents/MacOS/isolator`；Windows 位于安装/便携目录 `isolator.exe`。先运行应用，再执行 `isolator --help` 或 `isolator mcp serve`。
+
+在 **设置 → 自动化** 查看接入状态和 CLI 路径，复制 MCP 配置或诊断，展开接入说明。未包含 CLI 的构建会显示原因并禁用对应复制按钮。
+
+默认以文字快照降低上下文开销，截图只返回文件路径。只有模型具备识图能力且工具链接受图片时才使用 `mcp serve --vision`；不确定或曾读图卡住时继续用文字。完整命令、MCP 配置、旧调用兼容边界及验证限制见 [本地自动化指南](handbook/14-automation.md)。

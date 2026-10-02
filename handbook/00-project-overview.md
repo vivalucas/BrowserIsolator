@@ -32,3 +32,5 @@ BrowserIsolator 是面向 Apple Silicon Mac 的原生浏览器环境管理工具
 | 发行 | GitHub Actions、GitHub Releases、Sparkle appcast | `.github/workflows/*.yml` | 2026-09-22 |
 
 发布包仅支持 Apple Silicon。Google Chrome 使用官方 Universal DMG，但本项目自身不声明 Intel Mac 支持。Windows 版属于独立项目；本仓库只维护必要的行为契约对齐。
+
+通用本地网页自动化接口已加入产品边界，见 [14](14-automation.md)；调用方负责网站业务策略和程序编排。

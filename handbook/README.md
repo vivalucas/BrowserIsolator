@@ -30,12 +30,13 @@
 | 11 | [决策与经验](11-decisions.md) | 长期取舍、边界和重评条件 | 启用 |
 | 12 | [外部参考](12-references.md) | 官方来源、采用范围和内部原件 | 启用 |
 | 13 | [操作指南](13-operation-guide.md) | 用户指南维护入口 | 根 README 已覆盖 |
+| 14 | [本地自动化接口](14-automation.md) | CLI、IPC、MCP、页面读取/观察及截图契约 | 启用 |
 
 ## 14+ 扩展
 
 现有文件无法清楚承载独立主题时，可建立 `14-主题英文短名.md` 等专题：先查重，注明用途、状态、范围、依据和维护时机，并在此登记。编号按历史最大值递增；标准文档只留摘要和链接。原始样本、大型评审或专题设计才需要扩展，普通任务不另建流水账。
 
-当前没有 14+ 专题。`docs/windows-alignment.md` 和 `docs/release-notes-1.9.0.md` 是已有对外/专题文档，由 [12](12-references.md) 索引，不重复搬入 handbook。
+当前专题为 [14 本地自动化接口](14-automation.md)。`docs/windows-alignment.md` 和 `docs/release-notes-1.9.0.md` 是已有对外/专题文档，由 [12](12-references.md) 索引，不重复搬入 handbook。
 
 ## 事实与文档分工
 
