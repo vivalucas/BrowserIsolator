@@ -15,7 +15,7 @@ mkdir -p BrowserIsolator.app/Contents/Frameworks
 cp BrowserIsolator/.build/release/BrowserIsolator BrowserIsolator.app/Contents/MacOS/
 cp BrowserIsolator/.build/release/isolator BrowserIsolator.app/Contents/MacOS/
 cp -R BrowserIsolator/.build/release/BrowserIsolator_IsolatorCore.bundle BrowserIsolator.app/Contents/Resources/
-cp -R BrowserIsolator/.build/arm64-apple-macosx/release/Sparkle.framework BrowserIsolator.app/Contents/Frameworks/
+cp -R BrowserIsolator/.build/release/Sparkle.framework BrowserIsolator.app/Contents/Frameworks/
 install_name_tool -add_rpath "@loader_path/../Frameworks" BrowserIsolator.app/Contents/MacOS/BrowserIsolator
 cp Info.plist BrowserIsolator.app/Contents/
 cp AppIcon.icns BrowserIsolator.app/Contents/Resources/

@@ -19,7 +19,7 @@ swift test
 swift build
 ```
 
-生成可双击 `.app` 时在仓库根目录运行 `./build.sh`。脚本执行 arm64 Release 构建、复制 Sparkle framework 和资源，并进行 ad-hoc 签名。日常源码开发也可用 Xcode 打开 `BrowserIsolator/Package.swift`。
+生成可双击 `.app` 时在仓库根目录运行 `./build.sh`。脚本执行 arm64 Release 构建、复制 Sparkle framework 和资源，并进行 ad-hoc 签名。打包使用 `.build/release` 公共入口，不依赖特定工具链的底层输出目录布局。日常源码开发也可用 Xcode 打开 `BrowserIsolator/Package.swift`。
 
 依赖版本由 `Package.swift` 和 `Package.resolved` 管理。换机时重新解析/构建，不复制 `.build`、`.swiftpm` 或 `.app`。构建结束若产物不需要交付，应清理并检查：
 

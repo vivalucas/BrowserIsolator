@@ -29,3 +29,9 @@
 ## 本地自动化接口
 
 原生 CLI、本地 IPC 和 MCP stdio 共用执行层；协议为 `isolator.local/1`。详见 [14](14-automation.md)。新接口不改变本页原有 CDP/外链/单实例契约；新增的读取脚本运行在隔离世界，差异注入仍由原组件负责。页面工具必须指定环境和 tab；所有操作、返回状态、覆盖范围和资源限制以能力查询及专题为准。
+
+## 采集器环境发现
+
+macOS 配置发现由本项目维护：用户 Application Support 下的 BrowserIsolator/config.json，根数组 profiles；条目使用 folder（稳定环境身份）、displayName、fingerprintEnabled、collectorDebugEnabled。实际 profile 目录为 Profiles/<folder>。字段与路径以 [Models.swift](../BrowserIsolator/Sources/BrowserIsolator/Models.swift) 的 AppPaths/AppConfig/Profile 为准；这里描述的是应用数据目录，不是源码 checkout 的位置。
+
+端口状态表只维护在 [模式和端口](02-function-design.md#模式和端口)。启动参数以 [BrowserManager.swift](../BrowserIsolator/Sources/BrowserIsolator/BrowserManager.swift) 的 browserLaunchArguments 为准。消费者使用实际分配端口，保留自己的归一化与复用/关闭逻辑，不复制一份本项目端口和启动规范。
